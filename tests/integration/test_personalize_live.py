@@ -63,8 +63,18 @@ def test_personalize_live_with_vision_no_image_gen():
 
     slots = [
         {"id": "hero.headline", "selector": "h1", "type": "text", "max_chars": 60},
-        {"id": "hero.subhead", "selector": "p.subhead", "type": "text", "max_chars": 200},
-        {"id": "hero.cta.primary", "selector": "button.primary", "type": "text", "max_chars": 24},
+        {
+            "id": "hero.subhead",
+            "selector": "p.subhead",
+            "type": "text",
+            "max_chars": 200,
+        },
+        {
+            "id": "hero.cta.primary",
+            "selector": "button.primary",
+            "type": "text",
+            "max_chars": 24,
+        },
         {
             "id": "image.hero",
             "selector": "img.hero",

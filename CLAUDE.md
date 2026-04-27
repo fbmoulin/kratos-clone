@@ -120,9 +120,51 @@ gh run list --limit 5
 ## Known issues
 
 > ✅ All 9 P1 audit findings closed. P0 was zero from the start.
-> Open: P2 items (12) + P3 (~13). See `docs/AUDIT.md` for the full list and
-> `ROADMAP.md` for phasing. Top P2 candidates next: type hints on `app.py`
-> (currently 0%), bandit + mypy in CI, Dependabot config.
+> P2-11 closed by Phase 4 (personalize sanitize). Remaining P2: 7 items.
+> P3: ~13. See `docs/AUDIT.md` for the full list and `ROADMAP.md` for phasing.
+> Top P2 candidates next: P2-1 asset_filename regex, P2-8 hardcoded scorecard,
+> P2-9 unmeasured "+70%" claim, P2-10 "+6650% CSS" attribution, P2-12 authed
+> response capture redaction.
+
+---
+
+## Personalization module (`personalize/`, Phase 4)
+
+**Status:** SHIPPED 2026-04-27. First real OpenAI integration in the repo.
+First module-tested live against the API (`RUN_OPENAI_LIVE=1`).
+
+### Module layout
+- `personalize/slots.py` — Step 4 slot extractor (deterministic; no LLM)
+- `personalize/sanitize.py` — text/image/HTML hardening (closes audit P2-11)
+- `personalize/openai_client.py` — `OpenAIBrandClient` with hard budget cap
+- `personalize/patcher.py` — Step 7 BS4 patch applier
+- `personalize/pipeline.py` — Step 8 orchestrator
+- `personalize/cli.py` + `__main__.py` — `python -m personalize ...`
+
+### Conventions specific to `personalize/`
+1. **Always inject the OpenAI client in tests.** `OpenAIBrandClient(openai_client=mock)`. Never call the real API in unit tests; live calls go in `tests/integration/` and are gated by `RUN_OPENAI_LIVE=1`.
+2. **Budget guard fires BEFORE the API call** (`_check_budget` raises, then the call happens, then `_record_spend`). Failing API call ⇒ no double-charge to the tracker.
+3. **Closed-enum slot IDs in the personalize schema.** The schema is built dynamically from the slot list; the LLM cannot return a `slot_id` that doesn't exist. Don't relax this to a free-form string field.
+4. **Every brief field goes into the LLM input via `json.dumps`, never f-string** (P2-11). System prompt does pre-sanitize via `sanitize_brief_text`.
+5. **Logo upload allow-lists PNG/JPEG by magic bytes.** SVG is rejected because of inline-script XSS surface. EXIF is stripped before upload.
+6. **Each LLM-derived text value runs through `strip_dangerous_html` before DOM write**, even though strict JSON schema means HTML never appears in valid output. Defense-in-depth.
+
+### How to run live (validated 2026-04-27)
+```bash
+# .env contains OPENAI_API_KEY=sk-... (gitignored, chmod 600)
+RUN_OPENAI_LIVE=1 uv run pytest tests/integration -v -s
+```
+Spent ~\$0.105 for the 2 included live tests. Default `pytest -q` skips them.
+
+### Routes
+- `GET /personalize` — intake form
+- `POST /api/personalize/structure` — JSON brief → 5/min/IP
+- `POST /api/personalize/run` — multipart brief+logo → 2/min/IP, 5 MiB cap
+
+### Things to NOT do in `personalize/`
+- Don't generate synthetic faces for testimonials (EU AI Act Art. 50 + OpenAI usage policies). Use CSS gradient + initials.
+- Don't use Assistants API (sunset H1 2026); use Responses API.
+- Don't claim cost is "$0.32 per run" without re-verifying — pricing changes.
 
 ---
 
