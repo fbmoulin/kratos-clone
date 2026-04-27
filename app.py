@@ -77,6 +77,36 @@ limiter = Limiter(key_func=get_remote_address)
 
 DOWNLOAD_FOLDER = "downloads"
 
+# Request-ID middleware (Phase 6).
+# Every request is assigned a UUID4 (or echoes a client-supplied one if it
+# matches the safe-character set) and bound to structlog's contextvars so
+# every log line in the request scope inherits it. Helps trace a single
+# request across structlog backend logs + the browser observability stream.
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
+
+
+def _safe_request_id(value: str | None) -> str:
+    if value and _REQUEST_ID_RE.match(value):
+        return value
+    return str(uuid.uuid4())
+
+
+@app.before_request
+def _bind_request_id() -> None:
+    rid = _safe_request_id(request.headers.get("X-Request-ID"))
+    request.environ["request_id"] = rid
+    structlog.contextvars.bind_contextvars(request_id=rid)
+
+
+@app.after_request
+def _emit_request_id(response: Response) -> Response:
+    rid = request.environ.get("request_id")
+    if rid:
+        response.headers["X-Request-ID"] = rid
+    structlog.contextvars.clear_contextvars()
+    return response
+
+
 # Tunable retention windows (seconds)
 COMPLETE_TTL = 1800  # complete sessions (zip waiting for download)
 ERROR_TTL = 600  # error sessions
