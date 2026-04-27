@@ -81,11 +81,10 @@ def test_string_body_does_not_crash(client):
 
 
 def test_null_body_does_not_crash(client):
-    """body=null is not a dict → 204."""
+    """body=null parses to None, isinstance check trips, returns 204 (no body)."""
     resp = client.post("/api/client-errors", json=None)
-    assert resp.status_code in (204, 400)
-    # 400 is also acceptable here since silent=True returns None which our
-    # `isinstance(body, dict)` check trips. Either is documented behavior.
+    assert resp.status_code == 204
+    assert resp.data == b""
 
 
 # ── Validation: invalid shapes ──────────────────────────────────────────────
@@ -176,8 +175,8 @@ def test_body_over_app_cap_rejected_413(client):
 
 
 def test_long_field_does_not_crash_endpoint(client):
-    """Even a 500K char message gets _truncate'd to 2K — endpoint still 200."""
-    big = "x" * 5_000  # under per-route cap, way over per-field cap
+    """A 5K char message gets _truncate'd to 2K — endpoint still 200."""
+    big = "x" * 5_000  # under per-route cap, way over per-field cap (2KB)
     resp = client.post(
         "/api/client-errors",
         json={"entries": [{"level": "error", "event": "x", "message": big}]},
