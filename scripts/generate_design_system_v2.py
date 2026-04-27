@@ -206,66 +206,18 @@ coverage_section, coverage_inner = make_section(
     "Quantifies how complete the design-system extraction is. ✓ full · ◐ partial · ✗ missing.",
 )
 
-DTCG_CATEGORIES = [
-    (
-        "color",
-        "full",
-        f"{len(inv['arbitrary_colors'])} arbitrary hex + {len(inv['named_color_tokens'])} named tokens",
-    ),
-    (
-        "dimension",
-        "full",
-        f"{len(inv['containers'])} container widths, {len(inv['v_rhythm'])} rhythm tokens",
-    ),
-    (
-        "fontFamily",
-        "partial",
-        "Multiple webfonts from Google Fonts CSS; needs explicit family enumeration",
-    ),
-    (
-        "fontWeight",
-        "full",
-        "font-light, font-normal, font-medium observed in headings/paragraphs",
-    ),
-    (
-        "duration",
-        "partial",
-        "Multiple animate-* classes detected, raw values in keyframes need deep extraction",
-    ),
-    (
-        "cubicBezier",
-        "partial",
-        "GSAP timeline easings inline — Tailwind ease-in-out used; full curve catalog requires JS-runtime probe",
-    ),
-    ("number", "full", "Z-index scale, opacity values present"),
-    (
-        "typography",
-        "full",
-        f"{len(inv['headings']['h1']) + len(inv['headings']['h2']) + len(inv['headings']['h3']) + len(inv['headings']['h4'])} heading variants + {len(inv['paragraphs'])} paragraph variants",
-    ),
-    (
-        "shadow",
-        "full",
-        "shadow-[0_0_20px_rgba(249,115,22,0.2)] CTA glow + shadow-[0_0_30px_rgba(255,255,255,0.15)] white CTA",
-    ),
-    (
-        "gradient",
-        "full",
-        "from-orange-500 to-orange-600 (primary CTA), from-white to-white/60 (heading), bg-gradient-to-b section transitions",
-    ),
-    (
-        "transition",
-        "full",
-        "transition-all on every interactive surface; transition-colors on group-hover",
-    ),
-    ("strokeStyle", "missing", "No dashed/dotted borders detected; only solid"),
-    (
-        "border",
-        "full",
-        "border, border-y, border-t, border-b with 8 distinct neutral-900/* opacity variants",
-    ),
-]
-for cat, status, evidence in DTCG_CATEGORIES:
+# DTCG categories — driven from inventory data, not hardcoded.
+# (Closes audit P2-8: previously this section used a literal list of statuses
+# baked to the original NexusFlow capture, producing the same 80.8/100 score
+# for any site. validate.coverage_scorecard reads inventory keys and judges
+# each of the 13 categories against actual extracted evidence.)
+from scripts.validate import coverage_scorecard  # noqa: E402
+
+DTCG_ROWS = coverage_scorecard(inv)
+for row_data in DTCG_ROWS:
+    cat = row_data["category"]
+    status = row_data["status"]
+    evidence = row_data["evidence"]
     row = new.new_tag("div", **{"class": "scorecard"})
     row.append(
         BeautifulSoup(
@@ -279,9 +231,9 @@ for cat, status, evidence in DTCG_CATEGORIES:
     coverage_inner.append(row)
 
 # Summary
-full_count = sum(1 for _, s, _ in DTCG_CATEGORIES if s == "full")
-partial_count = sum(1 for _, s, _ in DTCG_CATEGORIES if s == "partial")
-missing_count = sum(1 for _, s, _ in DTCG_CATEGORIES if s == "missing")
+full_count = sum(1 for r in DTCG_ROWS if r["status"] == "full")
+partial_count = sum(1 for r in DTCG_ROWS if r["status"] == "partial")
+missing_count = sum(1 for r in DTCG_ROWS if r["status"] == "missing")
 total_score = (full_count + 0.5 * partial_count) / 13 * 100
 summary_html = (
     f'<div style="margin-top:24px;padding:18px;background:#0a0a0a;border:1px solid rgba(38,38,38,.5);'
