@@ -10,7 +10,7 @@ echo "Starting gunicorn on port ${PORT}..."
 # (~150-300MB) and holds response bodies in RAM. Multiple workers would
 # multiply memory usage and easily blow the 512MB Railway free-tier limit.
 # Threads handle SSE long-poll while a download runs in another thread.
-exec gunicorn app:app \
+exec gunicorn wsgi:app \
     --bind "0.0.0.0:${PORT}" \
     --workers 1 \
     --threads 4 \

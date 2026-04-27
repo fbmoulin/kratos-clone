@@ -50,7 +50,7 @@ jobs:
       - name: Install runtime deps
         run: |
           pip install --upgrade pip
-          pip install playwright beautifulsoup4 requests urllib3 flask gunicorn psutil structlog
+          pip install playwright beautifulsoup4 requests urllib3 flask gunicorn psutil structlog pytest
 
       - name: Verify kratos_clone imports
         run: |
@@ -94,47 +94,39 @@ jobs:
           print('post.py: rewrite + strip OK')
           "
 
-      - name: Verify Flask app imports + observability endpoint
+      - name: Verify Flask app imports without side effects (factory pattern)
         run: |
           python -c "
+          import threading
+          before = threading.active_count()
           import app
+          after = threading.active_count()
+          assert before == after, f'import must not start threads (before={before}, after={after})'
           routes = {r.rule for r in app.app.url_map.iter_rules()}
           assert '/api/client-errors' in routes, '/api/client-errors must be registered'
           assert '/health' in routes, '/health must remain'
-
-          # End-to-end test of the client-errors endpoint
-          client = app.app.test_client()
-          resp = client.post('/api/client-errors',
-              json={'entries': [{'level': 'error', 'event': 'test',
-                                  'message': 'm', 'sessionId': 's'}]})
-          assert resp.status_code == 200, f'expected 200, got {resp.status_code}'
-          assert resp.get_json()['accepted'] == 1
-
-          # Validation: bad payload silently parses to None -> 204 (RFC 9110, no body)
-          resp_bad = client.post('/api/client-errors', data='not json',
-                                  content_type='application/json')
-          assert resp_bad.status_code == 204, 'bad json -> 204 no content'
-          assert resp_bad.data == b'', '204 must not have a body'
-
-          # Body as JSON array (not dict) — must NOT crash with AttributeError
-          resp_arr = client.post('/api/client-errors', json=['x', 'y'])
-          assert resp_arr.status_code == 204, 'list body -> 204'
-
-          # Invalid shape: entries not a list -> 400
-          resp_shape = client.post('/api/client-errors',
-                                    json={'entries': 'not a list'})
-          assert resp_shape.status_code == 400, 'invalid entries shape must 400'
-
-          # critical level accepted (regression for level whitelist)
-          resp_crit = client.post('/api/client-errors',
-              json={'entries': [{'level': 'critical', 'event': 'fatal',
-                                  'message': 'boom'}]})
-          assert resp_crit.status_code == 200
-          assert resp_crit.get_json()['accepted'] == 1
-
-          # Body cap
-          resp_big = client.post('/api/client-errors', data='x' * 50000,
-                                  content_type='application/json')
-          assert resp_big.status_code == 413, '32KB cap should reject'
-          print('app.py: routes + /api/client-errors round-trip OK')
+          # Factory roundtrip: returns module-level app
+          fresh = app.create_app(start_janitor=False, run_boot_cleanup=False)
+          assert fresh is app.app, 'create_app must return module-level app'
+          print('app.py: import side-effect-free, factory ok')
           "
+
+  pytest:
+    name: pytest (kratos_clone + post + client_errors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime deps + pytest
+        run: |
+          pip install --upgrade pip
+          pip install pytest playwright beautifulsoup4 requests urllib3 flask gunicorn psutil structlog
+
+      - name: Run pytest
+        run: pytest -v tests/

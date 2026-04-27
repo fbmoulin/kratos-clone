@@ -50,8 +50,6 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 
 DOWNLOAD_FOLDER = "downloads"
-if not os.path.exists(DOWNLOAD_FOLDER):
-    os.makedirs(DOWNLOAD_FOLDER)
 
 # Tunable retention windows (seconds)
 COMPLETE_TTL = 1800  # complete sessions (zip waiting for download)
@@ -59,6 +57,20 @@ ERROR_TTL = 600  # error sessions
 PROCESSING_TTL = 1800  # safety net for stuck/zombie sessions
 ORPHAN_FILE_TTL = 1800  # files on disk with no matching session
 CLEANUP_INTERVAL = 300  # how often the janitor runs
+
+# Per-session state. Always touch via session_lock when iterating/mutating.
+# Module-level so routes (registered via @app.route below) can close over them;
+# cleared/reset by tests via _reset_state().
+message_queues = {}
+download_results = {}
+session_lock = threading.Lock()
+
+
+def _reset_state():
+    """Test helper — wipe in-memory session state without touching disk."""
+    with session_lock:
+        message_queues.clear()
+        download_results.clear()
 
 
 def cleanup_downloads_folder():
@@ -75,14 +87,6 @@ def cleanup_downloads_folder():
         logger.warning(
             "downloads_folder_clear_failed", folder=DOWNLOAD_FOLDER, error=str(e)
         )
-
-
-cleanup_downloads_folder()
-
-# Per-session state. Always touch via session_lock when iterating/mutating.
-message_queues = {}
-download_results = {}
-session_lock = threading.Lock()
 
 
 def _purge_session(session_id):
@@ -185,7 +189,26 @@ def cleanup_abandoned_sessions():
             logger.error("janitor_cycle_failed", error=str(e))
 
 
-threading.Thread(target=cleanup_abandoned_sessions, daemon=True).start()
+def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True):
+    """Initialize side-effecting parts of the app: ensure DOWNLOAD_FOLDER exists,
+    optionally clear stale downloads on boot, and optionally start the janitor
+    thread. Returns the module-level `app` for chaining.
+
+    Tests call `create_app(start_janitor=False, run_boot_cleanup=False)` to get
+    a fresh, side-effect-free Flask instance. Production uses `wsgi.py` which
+    calls `create_app()` with defaults.
+
+    Idempotent re: the Flask `app` object (always the same instance); NOT
+    idempotent re: spawning janitor threads — calling twice will start two.
+    """
+    if not os.path.exists(DOWNLOAD_FOLDER):
+        os.makedirs(DOWNLOAD_FOLDER)
+    if run_boot_cleanup:
+        cleanup_downloads_folder()
+    if start_janitor:
+        threading.Thread(target=cleanup_abandoned_sessions, daemon=True).start()
+        logger.info("janitor_started", interval_s=CLEANUP_INTERVAL)
+    return app
 
 
 @app.route("/")
@@ -477,7 +500,10 @@ def client_errors():
 
 if __name__ == "__main__":
     logger.info("app_starting", port=5001, debug=True)
+    create_app()
     app.run(debug=True, port=5001, threaded=True)
-else:
-    # Production: Gunicorn entrypoint
-    logger.info("app_loaded_under_wsgi")
+
+# NOTE: when imported (by tests, by `gunicorn app:app` legacy entry, or by `wsgi.py`),
+# the module does NOT auto-call create_app(). This is the factory pattern fix for
+# audit P2-7 — `import app` must be side-effect free. Production should use `wsgi.py`
+# (`gunicorn wsgi:app`); the entrypoint.sh has been updated accordingly.
