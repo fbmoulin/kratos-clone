@@ -163,6 +163,35 @@ def test_missing_selector_skipped_silently(workspace):
     assert "ignored" not in out.read_text()
 
 
+def test_palette_swap_does_not_touch_text_content(tmp_path: Path):
+    """Regression for Gemini medium finding: regex on serialized HTML used to
+    rewrite class strings appearing inside text content / IDs / aria labels.
+    The DOM-walking implementation must scope the swap to actual class attrs.
+    """
+    src = tmp_path / "index.html"
+    src.write_text(
+        "<html><body>"
+        '<section class="hero from-orange-500">'
+        "<p>Docs sample: use <code>from-orange-500</code> on your hero.</p>"
+        '<a id="from-orange-500-anchor" aria-label="from-orange-500">link</a>'
+        "</section></body></html>",
+        encoding="utf-8",
+    )
+    out = tmp_path / "personalized.html"
+    plan = _full_plan()
+    plan["patches"] = []
+    plan["images"] = []
+    apply_personalization(src, plan, {}, SLOTS, out)
+    html = out.read_text()
+    # The class on the <section> must be rewritten — orange shade gone.
+    assert "from-orange-500" not in html.split("<code>")[0]
+    # But the literal inside <code>, the id, and the aria-label are plain
+    # text / non-class attrs — must survive untouched.
+    assert "<code>from-orange-500</code>" in html
+    assert 'id="from-orange-500-anchor"' in html
+    assert 'aria-label="from-orange-500"' in html
+
+
 def test_unicode_preserved(workspace):
     out = workspace / "personalized.html"
     plan = _full_plan()

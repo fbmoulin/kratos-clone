@@ -36,7 +36,7 @@ SOURCE_HTML_FILENAME = "index.html"
 OUTPUT_HTML_FILENAME = "personalized.html"
 
 
-def run_pipeline(
+async def arun_pipeline(
     html_dir: Path,
     raw_brief: str,
     logo_bytes: bytes,
@@ -45,16 +45,10 @@ def run_pipeline(
     dry_run: bool = False,
     structured_brief_override: dict[str, Any] | None = None,
 ) -> Path | None:
-    """Run the full personalization pipeline against a captured site.
+    """Async pipeline core. Use this from FastAPI / Starlette / any async caller.
 
-    ``html_dir`` must contain ``index.html`` and ``_inventory.json``.
-    ``client`` is dependency-injected for tests; defaults to a fresh
-    ``OpenAIBrandClient()`` (which reads ``OPENAI_API_KEY`` from env).
-    ``dry_run=True`` validates inputs and prints the plan summary without
-    making any API calls. Returns the personalized HTML path, or ``None``
-    in dry-run mode.
-
-    Surfaces failures unchanged with a structured log line keyed by step.
+    Identical contract to ``run_pipeline`` but never calls ``asyncio.run``,
+    so it composes cleanly inside an existing event loop.
     """
     html_dir = Path(html_dir)
     src_html = html_dir / SOURCE_HTML_FILENAME
@@ -106,9 +100,9 @@ def run_pipeline(
         log.error("step_failed", step="personalize", error=str(exc))
         raise
 
-    # Step 6 — async image generation.
+    # Step 6 — async image generation (already async; just await).
     try:
-        images = asyncio.run(client.generate_images_parallel(plan, slots))
+        images = await client.generate_images_parallel(plan, slots)
     except Exception as exc:
         log.error("step_failed", step="generate_images", error=str(exc))
         raise
@@ -124,3 +118,41 @@ def run_pipeline(
         remaining_usd=client.remaining_usd,
     )
     return out_path
+
+
+def run_pipeline(
+    html_dir: Path,
+    raw_brief: str,
+    logo_bytes: bytes,
+    *,
+    client: OpenAIBrandClient | None = None,
+    dry_run: bool = False,
+    structured_brief_override: dict[str, Any] | None = None,
+) -> Path | None:
+    """Sync wrapper around :func:`arun_pipeline`.
+
+    Use this from synchronous Flask routes / CLI / anywhere there is no
+    running event loop. If called from inside one (e.g. an async test runner
+    or a FastAPI handler) it raises a clear error pointing at the async
+    variant — closes Gemini's medium finding from PR #7 review.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop — safe to use asyncio.run.
+        pass
+    else:
+        raise RuntimeError(
+            "run_pipeline called from inside a running event loop; "
+            "use `await arun_pipeline(...)` instead."
+        )
+    return asyncio.run(
+        arun_pipeline(
+            html_dir,
+            raw_brief,
+            logo_bytes,
+            client=client,
+            dry_run=dry_run,
+            structured_brief_override=structured_brief_override,
+        )
+    )

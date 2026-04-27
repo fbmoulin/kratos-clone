@@ -11,7 +11,7 @@ import pytest
 from PIL import Image
 
 from personalize.openai_client import BudgetExceededError
-from personalize.pipeline import run_pipeline
+from personalize.pipeline import arun_pipeline, run_pipeline
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -127,3 +127,28 @@ def test_dry_run_skips_api_calls(workspace):
     assert out is None
     client.structure_brief.assert_not_called()
     client.personalize.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_arun_pipeline_works_inside_event_loop(workspace):
+    """arun_pipeline composes inside an existing event loop (FastAPI etc.)."""
+    client = _mk_client()
+    out = await arun_pipeline(
+        workspace,
+        "brief",
+        _png_bytes(),
+        client=client,
+    )
+    assert out is not None
+    assert out.exists()
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_refuses_inside_event_loop(workspace):
+    """Sync run_pipeline must raise a clear error when called from async ctx
+    instead of dying inside ``asyncio.run`` with a confusing trace.
+    Regression for Gemini medium finding from PR #7 review.
+    """
+    client = _mk_client()
+    with pytest.raises(RuntimeError, match="running event loop"):
+        run_pipeline(workspace, "brief", _png_bytes(), client=client)

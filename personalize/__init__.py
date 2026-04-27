@@ -8,7 +8,8 @@ Entry points:
 - ``extract_slots`` — Step 4 deterministic slot extraction
 - ``apply_personalization`` — Step 7 BS4 patch applier
 - ``OpenAIBrandClient`` — Steps 2/5/6 LLM calls with budget guard
-- ``run_pipeline`` — orchestrates Steps 2–8 end-to-end
+- ``run_pipeline`` — sync orchestrator (Flask / CLI)
+- ``arun_pipeline`` — async orchestrator (FastAPI / async tests)
 
 See ``docs/PERSONALIZATION.md`` for the full architectural spec.
 """
