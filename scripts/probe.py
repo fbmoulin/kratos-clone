@@ -57,11 +57,7 @@ def summarize_csp(headers: dict[str, str]) -> dict[str, list[str]]:
     where the first token is the directive name and the rest are sources.
     Returns an empty dict if no CSP is present.
     """
-    raw = (
-        headers.get("content-security-policy")
-        or headers.get("Content-Security-Policy")
-        or ""
-    )
+    raw = headers.get("content-security-policy") or headers.get("Content-Security-Policy") or ""
     if not raw:
         return {}
     out: dict[str, list[str]] = {}
@@ -88,9 +84,7 @@ class ProbeResult:
         return json.dumps(asdict(self), indent=2, sort_keys=True)
 
 
-def run_probe(
-    url: str, *, session: Any | None = None, timeout: float = 10.0
-) -> ProbeResult:
+def run_probe(url: str, *, session: Any | None = None, timeout: float = 10.0) -> ProbeResult:
     """Run HEAD then conditional GET. Returns ``ProbeResult`` always.
 
     Network errors are captured in ``result.error``; the function never raises.

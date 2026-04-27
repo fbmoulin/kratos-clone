@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from kratos_clone.capture import asset_filename, hash_url
 
-
 # ── hash_url ─────────────────────────────────────────────────────────────────
 
 
@@ -133,9 +132,7 @@ def test_contrast_ratio_white_on_black_is_21():
 
 def test_contrast_ratio_symmetric():
     """contrast(a, b) == contrast(b, a) — order shouldn't matter."""
-    assert (
-        abs(_contrast_ratio("#fff", "#000") - _contrast_ratio("#000", "#fff")) < 0.001
-    )
+    assert abs(_contrast_ratio("#fff", "#000") - _contrast_ratio("#000", "#fff")) < 0.001
 
 
 def test_contrast_ratio_self_is_1():

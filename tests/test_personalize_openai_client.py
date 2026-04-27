@@ -189,12 +189,8 @@ class TestPersonalize:
         )
         kwargs = mock.responses.create.call_args.kwargs
         schema = kwargs["text"]["format"]["schema"]
-        text_enum = schema["properties"]["patches"]["items"]["properties"]["slot_id"][
-            "enum"
-        ]
-        image_enum = schema["properties"]["images"]["items"]["properties"]["slot_id"][
-            "enum"
-        ]
+        text_enum = schema["properties"]["patches"]["items"]["properties"]["slot_id"]["enum"]
+        image_enum = schema["properties"]["images"]["items"]["properties"]["slot_id"]["enum"]
         assert text_enum == ["hero.headline"]
         assert image_enum == ["image.hero"]
 
@@ -239,13 +235,9 @@ class TestGenerateImages:
     async def test_returns_bytes_per_slot(self):
         async_mock = MagicMock()
         async_mock.images.generate = AsyncMock(
-            return_value=SimpleNamespace(
-                data=[SimpleNamespace(b64_json="iVBORw0KGgo=")]
-            )
+            return_value=SimpleNamespace(data=[SimpleNamespace(b64_json="iVBORw0KGgo=")])
         )
-        client = OpenAIBrandClient(
-            openai_client=MagicMock(), async_openai_client=async_mock
-        )
+        client = OpenAIBrandClient(openai_client=MagicMock(), async_openai_client=async_mock)
         plan = {
             "palette": {
                 "primary": "#000000",
@@ -264,9 +256,7 @@ class TestGenerateImages:
     async def test_first_image_no_reference_rest_with_reference(self):
         async_mock = MagicMock()
         async_mock.images.generate = AsyncMock(
-            return_value=SimpleNamespace(
-                data=[SimpleNamespace(b64_json="iVBORw0KGgo=")]
-            )
+            return_value=SimpleNamespace(data=[SimpleNamespace(b64_json="iVBORw0KGgo=")])
         )
         slots = _BASIC_SLOTS + [
             {
@@ -277,9 +267,7 @@ class TestGenerateImages:
                 "height": 500,
             }
         ]
-        client = OpenAIBrandClient(
-            openai_client=MagicMock(), async_openai_client=async_mock
-        )
+        client = OpenAIBrandClient(openai_client=MagicMock(), async_openai_client=async_mock)
         plan = {
             "palette": {
                 "primary": "#000000",
@@ -305,9 +293,7 @@ class TestGenerateImages:
     async def test_budget_guard_stops_before_overspend(self):
         async_mock = MagicMock()
         async_mock.images.generate = AsyncMock(
-            return_value=SimpleNamespace(
-                data=[SimpleNamespace(b64_json="iVBORw0KGgo=")]
-            )
+            return_value=SimpleNamespace(data=[SimpleNamespace(b64_json="iVBORw0KGgo=")])
         )
         client = OpenAIBrandClient(
             openai_client=MagicMock(),

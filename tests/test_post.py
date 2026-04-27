@@ -6,10 +6,10 @@ shipping).
 """
 
 from __future__ import annotations
+
 import pytest
 
 from kratos_clone.post import rewrite_html_assets, strip_scroll_fix
-
 
 # ── rewrite_html_assets ──────────────────────────────────────────────────────
 
@@ -24,9 +24,7 @@ def test_rewrite_empty_dict_unchanged():
 def test_rewrite_single_exact_match():
     """Single asset URL → replaced with local path."""
     html = '<html><body><img src="https://x.com/a.png"></body></html>'
-    out = rewrite_html_assets(
-        html, {"https://x.com/a.png": "assets/a_abc.png"}, "https://x.com"
-    )
+    out = rewrite_html_assets(html, {"https://x.com/a.png": "assets/a_abc.png"}, "https://x.com")
     assert "assets/a_abc.png" in out
     assert "https://x.com/a.png" not in out
 

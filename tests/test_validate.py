@@ -12,12 +12,11 @@ from scripts.validate import (
     check_asset_refs,
     check_placeholders,
     check_wcag_contrast,
-    coverage_scorecard,
     contrast_ratio,
+    coverage_scorecard,
     hex_to_rgb,
     run_validate,
 )
-
 
 # --- coverage_scorecard ---------------------------------------------------
 
@@ -197,9 +196,7 @@ class TestRunValidate:
         assert report.missing_assets == []
         assert report.placeholder_hits == []
         assert report.contrast_failures == []
-        assert any(
-            s["status"] in ("full", "partial", "missing") for s in report.coverage
-        )
+        assert any(s["status"] in ("full", "partial", "missing") for s in report.coverage)
 
     def test_failed_when_assets_missing(self, good_capture):
         good_capture.joinpath("assets/a.png").unlink()
@@ -208,9 +205,7 @@ class TestRunValidate:
         assert "assets/a.png" in report.missing_assets
 
     def test_failed_when_placeholders_present(self, good_capture):
-        good_capture.joinpath("index.html").write_text(
-            "<p>Lorem ipsum dolor sit amet</p>"
-        )
+        good_capture.joinpath("index.html").write_text("<p>Lorem ipsum dolor sit amet</p>")
         report = run_validate(good_capture)
         assert report.passed is False
         assert report.placeholder_hits

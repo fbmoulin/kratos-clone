@@ -17,9 +17,9 @@ import argparse
 import base64
 import mimetypes
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 import structlog
 from bs4 import BeautifulSoup
@@ -64,9 +64,7 @@ def _iter_asset_refs(soup: BeautifulSoup) -> Iterable[tuple[object, str, str]]:
                 yield tag, attr, value
 
 
-def inline_small_assets(
-    html_path: Path, out_path: Path, *, max_bytes: int = 5000
-) -> int:
+def inline_small_assets(html_path: Path, out_path: Path, *, max_bytes: int = 5000) -> int:
     """Replace ``<tag attr="assets/...">`` with ``data:`` URIs for small files.
 
     Returns the number of references rewritten. ``max_bytes=0`` is a no-op

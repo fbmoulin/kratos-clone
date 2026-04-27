@@ -4,6 +4,7 @@ Critical pattern: app is imported with NO side effects (factory pattern, audit P
 Each test gets a fresh client + clean in-memory state."""
 
 from __future__ import annotations
+
 import pytest
 
 

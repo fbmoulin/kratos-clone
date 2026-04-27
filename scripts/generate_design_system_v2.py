@@ -9,11 +9,13 @@ Plus all v1 sections (Hero, Typography, Colors, Components, Layout, Motion, Icon
 """
 
 from __future__ import annotations
+
 import json
 import re
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
-from collections import Counter
+
 from bs4 import BeautifulSoup, Tag
 
 ROOT = Path(__file__).parent
@@ -23,9 +25,7 @@ OUT = ROOT / "design-system.html"
 
 soup = BeautifulSoup(SRC.read_text(encoding="utf-8"), "html.parser")
 inv = json.loads(INV.read_text())
-new = BeautifulSoup(
-    "<!doctype html><html><head></head><body></body></html>", "html.parser"
-)
+new = BeautifulSoup("<!doctype html><html><head></head><body></body></html>", "html.parser")
 new_html = new.html
 new_head = new.head
 new_body = new.body
@@ -478,18 +478,12 @@ _secondary = find_button_by_classes(
     _b, "neutral-900/", "border-neutral-800", default_label="View demo"
 )
 _ghost = find_button_by_classes(_b, "white/5", "white/10", default_label="Get Started")
-_white_pill = find_button_by_classes(
-    _b, "bg-white", "text-black", default_label="Start Building"
-)
-_dark_pill = find_button_by_classes(
-    _b, "bg-[#11", "rounded-full", default_label="Explore"
-)
+_white_pill = find_button_by_classes(_b, "bg-white", "text-black", default_label="Start Building")
+_dark_pill = find_button_by_classes(_b, "bg-[#11", "rounded-full", default_label="Explore")
 _chip_active = find_button_by_classes(
     _b, "bg-orange-500/10", "border-orange-500/30", default_label="All"
 )
-_chip_idle = find_button_by_classes(
-    _b, "bg-[#161616]", "rounded-full", default_label="Active"
-)
+_chip_idle = find_button_by_classes(_b, "bg-[#161616]", "rounded-full", default_label="Active")
 
 BUTTON_ROLES = [
     ("Primary CTA", _primary["classes"], _primary["label"]),
@@ -513,9 +507,7 @@ for role, cls, label in BUTTON_ROLES:
     grid = new.new_tag("div", **{"class": "ds-state-grid"})
     role_node = new.new_tag("span", **{"class": "ds-state-label"})
     role_node.string = role
-    btn_wrap = new.new_tag(
-        "div", style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;"
-    )
+    btn_wrap = new.new_tag("div", style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;")
     btn = new.new_tag("button", **{"class": cls})
     btn.string = label
     btn_wrap.append(btn)
@@ -868,9 +860,7 @@ icons_section, icons_inner = make_section(
     f"All icons come from <code>lucide</code>, served through <code>iconify-icon</code>. "
     f"{inv['icons_total']} usages across {len(inv['icons'])} unique icons.",
 )
-sizes_grid = new.new_tag(
-    "div", **{"class": "ds-grid cols-4"}, style="margin-bottom:32px;"
-)
+sizes_grid = new.new_tag("div", **{"class": "ds-grid cols-4"}, style="margin-bottom:32px;")
 for sz, lbl in [(14, "sm · 14"), (18, "md · 18"), (28, "lg · 28"), (48, "xl · 48")]:
     cell = new.new_tag("div", **{"class": "ds-icon-cell"})
     cell.append(
@@ -893,11 +883,7 @@ icons_inner.append(all_h)
 all_grid = new.new_tag("div", **{"class": "ds-grid cols-6"})
 for icon_name in inv["icons"]:
     cell = new.new_tag("div", **{"class": "ds-icon-cell"})
-    cell.append(
-        BeautifulSoup(
-            f'<iconify-icon icon="{icon_name}"></iconify-icon>', "html.parser"
-        )
-    )
+    cell.append(BeautifulSoup(f'<iconify-icon icon="{icon_name}"></iconify-icon>', "html.parser"))
     short = icon_name.split(":", 1)[-1]
     name = new.new_tag("span", **{"class": "name"})
     name.string = short
@@ -1102,9 +1088,7 @@ for el in src_soup.find_all(class_=True):
         class_counter[c] += 1
 
 drift_classes = [
-    (c, n)
-    for c, n in class_counter.most_common()
-    if re.search(r"\[#[0-9a-fA-F]{3,8}\]", c)
+    (c, n) for c, n in class_counter.most_common() if re.search(r"\[#[0-9a-fA-F]{3,8}\]", c)
 ]
 top_classes = class_counter.most_common(60)
 
@@ -1164,6 +1148,4 @@ print(f"✅ Wrote {OUT} ({OUT.stat().st_size // 1024} KB)")
 print(
     f"   Coverage: {full_count} ✓ + {partial_count} ◐ + {missing_count} ✗ = {total_score:.1f}/100"
 )
-print(
-    f"   Classes: {len(class_counter)} unique, {len(drift_classes)} arbitrary-value drift"
-)
+print(f"   Classes: {len(class_counter)} unique, {len(drift_classes)} arbitrary-value drift")

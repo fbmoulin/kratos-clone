@@ -1,19 +1,21 @@
-from flask import Flask, render_template, request, send_file, Response, jsonify
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+import contextlib
+import gc
 import logging
 import os
+import queue
 import re
 import shutil
 import sys
-import uuid
-import queue
 import threading
 import time
-import gc
-import structlog
-from downloader import WebsiteDownloader, zip_directory, get_site_name
+import uuid
 
+import structlog
+from flask import Flask, Response, jsonify, render_template, request, send_file
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+from downloader import WebsiteDownloader, get_site_name, zip_directory
 
 # ── Structured logging setup ────────────────────────────────────────────────
 # JSON output in production (when LOG_FORMAT=json), pretty console otherwise.
@@ -108,9 +110,7 @@ def cleanup_downloads_folder():
                 shutil.rmtree(item_path)
         logger.info("downloads_folder_cleared", folder=DOWNLOAD_FOLDER)
     except Exception as e:
-        logger.warning(
-            "downloads_folder_clear_failed", folder=DOWNLOAD_FOLDER, error=str(e)
-        )
+        logger.warning("downloads_folder_clear_failed", folder=DOWNLOAD_FOLDER, error=str(e))
 
 
 def _purge_session(session_id):
@@ -124,18 +124,14 @@ def _purge_session(session_id):
 
     zip_path = result.get("zip_path")
     if zip_path and os.path.exists(zip_path):
-        try:
+        with contextlib.suppress(Exception):
             os.remove(zip_path)
-        except Exception:
-            pass
 
     # Some error paths may leave the raw directory behind.
     raw_dir = os.path.join(DOWNLOAD_FOLDER, session_id)
     if os.path.isdir(raw_dir):
-        try:
+        with contextlib.suppress(Exception):
             shutil.rmtree(raw_dir)
-        except Exception:
-            pass
 
 
 def _cleanup_orphan_files():
@@ -363,10 +359,8 @@ def process_download(session_id, url):
         if os.path.exists(download_dir):
             shutil.rmtree(download_dir, ignore_errors=True)
         if os.path.exists(zip_path):
-            try:
+            with contextlib.suppress(Exception):
                 os.remove(zip_path)
-            except Exception:
-                pass
 
     finally:
         # Drop downloader reference so its in-memory buffers can be GC'd
@@ -660,7 +654,10 @@ def personalize_run():
 if __name__ == "__main__":
     logger.info("app_starting", port=5001, debug=True)
     create_app()
-    app.run(debug=True, port=5001, threaded=True)
+    # Dev-only entry point. Production uses ``gunicorn wsgi:app`` (see wsgi.py
+    # + Dockerfile + entrypoint.sh). The Werkzeug debugger from debug=True is
+    # therefore never exposed to the network in prod.
+    app.run(debug=True, port=5001, threaded=True)  # nosec B201
 
 # NOTE: when imported (by tests, by `gunicorn app:app` legacy entry, or by `wsgi.py`),
 # the module does NOT auto-call create_app(). This is the factory pattern fix for
