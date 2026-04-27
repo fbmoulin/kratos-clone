@@ -35,8 +35,10 @@ def captured_dir(tmp_path: Path, monkeypatch) -> Path:
 
 def test_personalize_page_renders(client):
     resp = client.get("/personalize")
-    # Template not yet implemented in this test file's scope, but route exists.
-    assert resp.status_code in (200, 500)
+    assert resp.status_code == 200
+    assert b"Personalizar site" in resp.data
+    assert b"/api/personalize/structure" in resp.data
+    assert b"/api/personalize/run" in resp.data
 
 
 def test_structure_requires_json_content_type(client):
