@@ -301,5 +301,156 @@
             }
         });
     </script>
+
+    <!-- ── Browser observability logger ──────────────────────────────────
+         Captures window errors, unhandled promise rejections, console.error,
+         and slow fetches. Batches up to 10 entries and ships via sendBeacon
+         to /api/client-errors so they land in the same structlog stream as
+         backend errors. -->
+    <script>
+    (function () {
+        var ENDPOINT = '/api/client-errors';
+        var BATCH_MAX = 10;
+        var FLUSH_MS = 5000;
+        var SLOW_FETCH_MS = 5000;
+        var queue = [];
+        // Capture pristine references BEFORE any wrappers (avoids feedback loop:
+        // if /api/client-errors is slow/4xx, the wrapped fetch would re-enqueue
+        // each flush, growing the queue unboundedly).
+        var _rawFetch = window.fetch ? window.fetch.bind(window) : null;
+        var sessionId = (function () {
+            try {
+                var k = 'fe_session_id';
+                var v = sessionStorage.getItem(k);
+                if (!v) {
+                    v = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                    sessionStorage.setItem(k, v);
+                }
+                return v;
+            } catch (_) { return 'no-storage'; }
+        })();
+
+        function flush() {
+            if (!queue.length) return;
+            var payload = JSON.stringify({ entries: queue.splice(0) });
+            var sent = false;
+            try {
+                if (navigator.sendBeacon) {
+                    sent = navigator.sendBeacon(ENDPOINT, new Blob([payload], { type: 'application/json' }));
+                }
+            } catch (_) { /* fall through to fetch */ }
+            if (!sent && _rawFetch) {
+                try {
+                    // Use pristine fetch — bypasses the wrapper so a slow/failing
+                    // logger endpoint never feeds back into its own queue.
+                    _rawFetch(ENDPOINT, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: payload,
+                        keepalive: true,
+                    }).catch(function () { /* swallow — best-effort */ });
+                } catch (_) { /* swallow */ }
+            }
+        }
+
+        function enqueue(level, event, fields) {
+            try {
+                queue.push(Object.assign({
+                    level: level,
+                    event: event,
+                    ts: new Date().toISOString(),
+                    url: location.href,
+                    userAgent: navigator.userAgent,
+                    sessionId: sessionId,
+                }, fields || {}));
+                if (queue.length >= BATCH_MAX) flush();
+            } catch (_) { /* never throw from logger */ }
+        }
+
+        // 1) Uncaught errors
+        window.addEventListener('error', function (e) {
+            enqueue('error', 'window_error', {
+                message: e && e.message,
+                stack: e && e.error && e.error.stack,
+                extra: e && e.filename ? (e.filename + ':' + e.lineno + ':' + e.colno) : null,
+            });
+        });
+
+        // 2) Unhandled promise rejections
+        window.addEventListener('unhandledrejection', function (e) {
+            var r = e && e.reason;
+            enqueue('error', 'unhandled_rejection', {
+                message: r && (r.message || String(r)),
+                stack: r && r.stack,
+            });
+        });
+
+        // 3) console.error wrapper (preserves original behavior + captures stacks)
+        var _err = console.error.bind(console);
+        console.error = function () {
+            try {
+                var stack = null;
+                var parts = Array.prototype.slice.call(arguments).map(function (a) {
+                    if (a instanceof Error) {
+                        if (!stack) stack = a.stack || null;
+                        return a.message || String(a);
+                    }
+                    return typeof a === 'string' ? a : JSON.stringify(a);
+                });
+                enqueue('error', 'console_error', { message: parts.join(' '), stack: stack });
+            } catch (_) { /* swallow */ }
+            _err.apply(console, arguments);
+        };
+
+        // 4) Slow-fetch detector + non-OK responses
+        // CRITICAL: skip our own logger endpoint to avoid feedback loops.
+        if (_rawFetch) {
+            window.fetch = function (input, init) {
+                var url = (typeof input === 'string') ? input : (input && input.url) || '';
+                if (url.indexOf(ENDPOINT) !== -1) {
+                    return _rawFetch(input, init);  // pristine path — no instrumentation
+                }
+                var t0 = performance.now();
+                return _rawFetch(input, init).then(function (resp) {
+                    var dt = performance.now() - t0;
+                    if (dt > SLOW_FETCH_MS) {
+                        enqueue('warning', 'fetch_slow', { message: url, extra: 'duration_ms=' + Math.round(dt) });
+                    }
+                    if (!resp.ok) {
+                        enqueue('warning', 'fetch_non_ok', { message: url, extra: 'status=' + resp.status });
+                    }
+                    return resp;
+                }).catch(function (err) {
+                    enqueue('error', 'fetch_failed', { message: url, stack: err && err.stack });
+                    throw err;
+                });
+            };
+        }
+
+        // 5) EventSource (SSE) connection failures — relevant for /stream/<id>
+        if (window.EventSource) {
+            var _ES = window.EventSource;
+            window.EventSource = function (url, cfg) {
+                var es = new _ES(url, cfg);
+                es.addEventListener('error', function () {
+                    if (es.readyState === _ES.CLOSED) {
+                        enqueue('warning', 'sse_closed', { message: String(url) });
+                    }
+                });
+                return es;
+            };
+            window.EventSource.CONNECTING = _ES.CONNECTING;
+            window.EventSource.OPEN = _ES.OPEN;
+            window.EventSource.CLOSED = _ES.CLOSED;
+        }
+
+        // 6) Periodic flush + flush on page hide
+        setInterval(flush, FLUSH_MS);
+        window.addEventListener('pagehide', flush);
+        window.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') flush();
+        });
+    })();
+    </script>
 </body>
 </html>
