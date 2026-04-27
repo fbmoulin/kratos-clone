@@ -63,17 +63,12 @@ if os.getenv("TRUST_PROXY", "0").strip() == "1":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
     logger.info("proxy_fix_enabled", x_for=1, x_proto=1)
 
-# P2-5: rate-limit /api/client-errors. Default in-memory storage is fine for
-# single-worker gunicorn (our entrypoint.sh uses --workers 1); for multi-worker
-# deployments wire RATE_LIMIT_STORAGE_URI to redis://...
-limiter = Limiter(
-    key_func=get_remote_address,
-    storage_uri=os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"),
-    # Disabled in tests via app.config["RATELIMIT_ENABLED"] = False to keep
-    # parametrized tests fast.
-    enabled=True,
-)
-limiter.init_app(app)
+# P2-5: rate-limit /api/client-errors. Lazy: limiter is bound to a route via
+# `@limiter.limit(...)` at decoration time but its storage backend (which can
+# spawn a janitor thread for in-memory expiration) is initialized only inside
+# `create_app()`. This keeps `import app` side-effect-free (audit P2-7) — the
+# CI smoke job verifies threading.active_count() does not grow on import.
+limiter = Limiter(key_func=get_remote_address)
 
 DOWNLOAD_FOLDER = "downloads"
 
@@ -217,8 +212,9 @@ def cleanup_abandoned_sessions():
 
 def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True):
     """Initialize side-effecting parts of the app: ensure DOWNLOAD_FOLDER exists,
-    optionally clear stale downloads on boot, and optionally start the janitor
-    thread. Returns the module-level `app` for chaining.
+    bind the rate limiter, optionally clear stale downloads on boot, and
+    optionally start the janitor thread. Returns the module-level `app` for
+    chaining.
 
     Tests call `create_app(start_janitor=False, run_boot_cleanup=False)` to get
     a fresh, side-effect-free Flask instance. Production uses `wsgi.py` which
@@ -229,6 +225,13 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True):
     """
     if not os.path.exists(DOWNLOAD_FOLDER):
         os.makedirs(DOWNLOAD_FOLDER)
+    # Bind limiter storage now (memory:// would otherwise spawn an
+    # expiration thread at module-import time and trip the smoke test).
+    app.config.setdefault(
+        "RATELIMIT_STORAGE_URI",
+        os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"),
+    )
+    limiter.init_app(app)
     if run_boot_cleanup:
         cleanup_downloads_folder()
     if start_janitor:
