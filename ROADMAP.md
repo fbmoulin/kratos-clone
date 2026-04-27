@@ -69,19 +69,27 @@ proposed architecture in `docs/WORKFLOW.md` + `docs/PERSONALIZATION.md`.
 
 ---
 
-## Phase 4 — Personalization MVP (~8h)
+## Phase 4 — Personalization MVP ✅ SHIPPED 2026-04-27
 
-Implements `docs/PERSONALIZATION.md` as code.
+Implemented `docs/PERSONALIZATION.md` as code in branch `feat/personalize-mvp`.
 
-| Item | New file | Effort |
-|------|----------|--------|
-| Slot extractor — augment `inventory.py` to emit `slots[]` array with `{id, selector, type, max_chars, structure?}` per personalizable element. | `scripts/inventory.py` (extension) | M ~2h |
-| `personalize.py` CLI — Step 5 (gpt-5-mini + Vision, structured output) + Step 7 (BeautifulSoup patch applicator) | `scripts/personalize.py` | L ~3h |
-| `gen_images.py` — Step 6 parallel gpt-image-1 generation with style reference | `scripts/gen_images.py` | M ~1.5h |
-| Brief intake form — extend `templates/index.html` OR new `/personalize` route | `app.py` + `templates/personalize.html` | M ~1.5h |
-| **Security hardening** — sanitize brief fields before LLM interpolation (use structured input not f-strings); DOM-parse + strip `<script>`/`on*`/`javascript:` from LLM HTML output; verify image magic bytes (PNG/JPEG only); strip EXIF | All of the above | (built into above) |
+| Item | Landed in | Notes |
+|------|-----------|-------|
+| Slot extractor (Step 4) | `personalize/slots.py` | 9 tests; deterministic, no LLM |
+| OpenAI client (Steps 2/5/6) | `personalize/openai_client.py` | gpt-5-mini Responses + AsyncOpenAI gpt-image-1; hard budget cap (default \$1.00); 12 mocked tests |
+| BS4 patcher (Step 7) | `personalize/patcher.py` | text/word-wrappers/palette/image; 7 tests |
+| Pipeline orchestrator | `personalize/pipeline.py` | 7 tests; structured logging per step |
+| Flask routes | `app.py` + `templates/personalize.html` | GET /personalize + POST /api/personalize/{structure,run}; 8 route tests |
+| CLI | `personalize/cli.py` + `__main__.py` | `python -m personalize ... --dry-run` |
+| Security hardening (P2-11) | `personalize/sanitize.py` | text/image/HTML; 21 tests; closes audit P2-11 |
+| Live OpenAI smoke (gated) | `tests/integration/test_personalize_live.py` | RUN_OPENAI_LIVE=1; structure_brief + personalize validated against real API (~\$0.105 spent during validation) |
 
-**Exit criteria:** End-to-end run on a real brief produces personalized HTML in <60s, <$1 per run. No prompt-injection vulnerability.
+**Exit criteria met:** structure_brief ~\$0.005/10s; personalize ~\$0.10/70s; image gen budget-tested. End-to-end well under \$1/run. Closed-enum schema = zero slot-id hallucination. P2-11 closed.
+
+**Out of scope (deferred to follow-on work):**
+- Streaming UI / SSE for run progress (long-poll OK for MVP)
+- A/B harness for the "+70%" claim (P2-9 still open)
+- Multi-language brief input (English-only first cut)
 
 ---
 

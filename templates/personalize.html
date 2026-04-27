@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personalizar site — kratos-clone</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh; margin: 0; padding: 20px;
+            display: flex; justify-content: center; align-items: flex-start;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.96);
+            padding: 2.5rem; border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%; max-width: 640px; margin-top: 40px;
+        }
+        h1 { margin: 0 0 0.25rem 0; font-size: 1.75rem; color: #1a1a2e; }
+        .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        section { margin-bottom: 1.75rem; padding-top: 1rem; border-top: 1px solid #eee; }
+        section:first-of-type { border-top: 0; padding-top: 0; }
+        h2 { font-size: 1.05rem; color: #1a1a2e; margin: 0 0 0.75rem 0; }
+        label { display: block; font-size: 0.85rem; color: #444; margin: 0.75rem 0 0.25rem 0; }
+        textarea, input[type="text"], input[type="file"] {
+            width: 100%; padding: 12px 14px;
+            border: 2px solid #e0e0e0; border-radius: 10px;
+            font-size: 0.95rem; font-family: inherit; outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        textarea:focus, input[type="text"]:focus {
+            border-color: #4a6cf7;
+            box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.1);
+        }
+        textarea { resize: vertical; min-height: 90px; }
+        button {
+            width: 100%; padding: 13px;
+            background: linear-gradient(135deg, #4a6cf7 0%, #6a8af9 100%);
+            color: white; border: none; border-radius: 10px;
+            font-size: 1rem; font-weight: 600; cursor: pointer;
+            margin-top: 1rem; transition: transform 0.05s, box-shadow 0.15s;
+        }
+        button:hover:not(:disabled) { box-shadow: 0 8px 20px rgba(74, 108, 247, 0.3); }
+        button:active:not(:disabled) { transform: translateY(1px); }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .status { margin-top: 0.75rem; font-size: 0.85rem; min-height: 1.2em; }
+        .status.error { color: #c1272d; }
+        .status.success { color: #2a7f3a; }
+        .hidden { display: none; }
+        .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+        .download-link { display: inline-block; margin-top: 0.5rem; color: #4a6cf7; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Personalizar site clonado</h1>
+    <p class="subtitle">Phase 4 — converte um capture em um site com sua marca via OpenAI.</p>
+
+    <section id="step-1">
+        <h2>1. Brief da marca</h2>
+        <label for="brief">Descreva sua empresa em 2–3 frases</label>
+        <textarea id="brief" placeholder="Ex: ferramenta de produtividade para times remotos pequenos, foco em onboarding rápido, tom direto e amigável."></textarea>
+
+        <label for="logo">Logo (PNG ou JPEG, &le; 2 MB)</label>
+        <input type="file" id="logo" accept="image/png,image/jpeg">
+
+        <label for="html-dir">Captura existente (pasta dentro de <code>downloads/</code>)</label>
+        <input type="text" id="html-dir" placeholder="ex: site-A">
+
+        <button id="extract-btn" type="button">Extrair campos estruturados</button>
+        <div class="status" id="extract-status"></div>
+    </section>
+
+    <section id="step-3" class="hidden">
+        <h2>2. Confirme os campos extraídos</h2>
+        <p class="subtitle">Edite o que precisar antes de personalizar.</p>
+        <label for="company">Empresa</label>
+        <input type="text" id="company" maxlength="60">
+        <label for="tagline">Tagline</label>
+        <input type="text" id="tagline" maxlength="100">
+        <label for="audience">Público</label>
+        <input type="text" id="audience" maxlength="200">
+        <label for="category">Categoria</label>
+        <input type="text" id="category" maxlength="60">
+        <label for="tone">Tom (separado por vírgula)</label>
+        <input type="text" id="tone" maxlength="120">
+
+        <button id="run-btn" type="button">Personalizar site</button>
+        <div class="status" id="run-status"></div>
+    </section>
+
+    <section id="step-out" class="hidden">
+        <h2>3. Resultado</h2>
+        <div id="output-summary"></div>
+    </section>
+</div>
+
+<script>
+(function () {
+    var $ = function (id) { return document.getElementById(id); };
+    var extractBtn = $('extract-btn');
+    var runBtn = $('run-btn');
+    var step3 = $('step-3');
+    var stepOut = $('step-out');
+
+    function setStatus(elId, text, level) {
+        var el = $(elId);
+        el.textContent = text || '';
+        el.className = 'status' + (level ? ' ' + level : '');
+    }
+
+    extractBtn.addEventListener('click', function () {
+        var brief = ($('brief').value || '').trim();
+        if (!brief) { setStatus('extract-status', 'Brief vazio', 'error'); return; }
+        extractBtn.disabled = true;
+        setStatus('extract-status', 'Extraindo via gpt-5-mini…');
+
+        fetch('/api/personalize/structure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ brief: brief }),
+        }).then(function (r) {
+            return r.json().then(function (data) { return { ok: r.ok, data: data, status: r.status }; });
+        }).then(function (res) {
+            extractBtn.disabled = false;
+            if (!res.ok) {
+                setStatus('extract-status', (res.data && res.data.error) || ('HTTP ' + res.status), 'error');
+                return;
+            }
+            $('company').value = res.data.company || '';
+            $('tagline').value = res.data.tagline || '';
+            $('audience').value = res.data.audience || '';
+            $('category').value = res.data.category || '';
+            $('tone').value = (res.data.tone || []).join(', ');
+            step3.classList.remove('hidden');
+            setStatus('extract-status', 'Campos extraídos. Edite e clique em Personalizar.', 'success');
+        }).catch(function (err) {
+            extractBtn.disabled = false;
+            setStatus('extract-status', 'Falha de rede: ' + (err && err.message), 'error');
+        });
+    });
+
+    runBtn.addEventListener('click', function () {
+        var logoInput = $('logo');
+        var htmlDir = ($('html-dir').value || '').trim();
+        if (!logoInput.files || !logoInput.files[0]) {
+            setStatus('run-status', 'Selecione um logo PNG/JPEG', 'error'); return;
+        }
+        if (!htmlDir) { setStatus('run-status', 'Informe a pasta html_dir', 'error'); return; }
+        var brief = {
+            company: $('company').value.trim(),
+            tagline: $('tagline').value.trim(),
+            audience: $('audience').value.trim(),
+            category: $('category').value.trim(),
+            tone: ($('tone').value || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+        };
+        if (!brief.company || brief.tone.length < 2) {
+            setStatus('run-status', 'Empresa e ≥ 2 termos de tom obrigatórios', 'error'); return;
+        }
+        var fd = new FormData();
+        fd.append('brief', JSON.stringify(brief));
+        fd.append('html_dir', htmlDir);
+        fd.append('logo', logoInput.files[0]);
+
+        runBtn.disabled = true;
+        setStatus('run-status', 'Personalizando — gpt-5-mini + gpt-image-1, ~25-30s…');
+
+        fetch('/api/personalize/run', { method: 'POST', body: fd })
+            .then(function (r) {
+                return r.json().then(function (data) { return { ok: r.ok, data: data, status: r.status }; });
+            }).then(function (res) {
+                runBtn.disabled = false;
+                if (!res.ok) {
+                    setStatus('run-status', (res.data && res.data.error) || ('HTTP ' + res.status), 'error');
+                    return;
+                }
+                setStatus('run-status', 'Pronto.', 'success');
+                stepOut.classList.remove('hidden');
+                $('output-summary').innerHTML =
+                    'Saída: <code>' + (res.data.output_path || '(none)') + '</code>';
+            }).catch(function (err) {
+                runBtn.disabled = false;
+                setStatus('run-status', 'Falha de rede: ' + (err && err.message), 'error');
+            });
+    });
+})();
+</script>
+
+<!-- Browser observability logger — copied verbatim from index.html so /personalize
+     gets the same window.error / fetch-failure / SSE telemetry stream. Capture
+     _rawFetch BEFORE wrapping fetch (PR #1 lesson) to avoid feedback loops on
+     /api/client-errors. -->
+<script>
+(function () {
+    var ENDPOINT = '/api/client-errors';
+    var BATCH_MAX = 10, FLUSH_MS = 5000, SLOW_FETCH_MS = 5000;
+    var queue = [];
+    var _rawFetch = window.fetch ? window.fetch.bind(window) : null;
+    var sessionId = (function () {
+        try {
+            var k = 'fe_session_id';
+            var v = sessionStorage.getItem(k);
+            if (!v) {
+                v = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                sessionStorage.setItem(k, v);
+            }
+            return v;
+        } catch (_) { return 'no-storage'; }
+    })();
+    function flush() {
+        if (!queue.length) return;
+        var payload = JSON.stringify({ entries: queue.splice(0) });
+        var sent = false;
+        try {
+            if (navigator.sendBeacon) {
+                sent = navigator.sendBeacon(ENDPOINT, new Blob([payload], { type: 'application/json' }));
+            }
+        } catch (_) {}
+        if (!sent && _rawFetch) {
+            try {
+                _rawFetch(ENDPOINT, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: payload, keepalive: true,
+                }).catch(function () {});
+            } catch (_) {}
+        }
+    }
+    var QUEUE_HARD_MAX = 200;
+    var _safeUrl = function () {
+        try { return location.origin + location.pathname; } catch (_) { return ''; }
+    };
+    function enqueue(level, event, fields) {
+        try {
+            if (queue.length >= QUEUE_HARD_MAX) queue.shift();
+            queue.push(Object.assign({
+                level: level, event: event, ts: new Date().toISOString(),
+                url: _safeUrl(), userAgent: navigator.userAgent, sessionId: sessionId,
+            }, fields || {}));
+            if (queue.length >= BATCH_MAX) flush();
+        } catch (_) {}
+    }
+    window.addEventListener('error', function (e) {
+        enqueue('error', 'window_error', {
+            message: e && e.message,
+            stack: e && e.error && e.error.stack,
+            extra: e && e.filename ? (e.filename + ':' + e.lineno + ':' + e.colno) : null,
+        });
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+        var r = e && e.reason;
+        enqueue('error', 'unhandled_rejection', {
+            message: r && (r.message || String(r)), stack: r && r.stack,
+        });
+    });
+    var _err = console.error.bind(console);
+    console.error = function () {
+        try {
+            var stack = null;
+            var parts = Array.prototype.slice.call(arguments).map(function (a) {
+                if (a instanceof Error) { if (!stack) stack = a.stack || null; return a.message || String(a); }
+                return typeof a === 'string' ? a : JSON.stringify(a);
+            });
+            enqueue('error', 'console_error', { message: parts.join(' '), stack: stack });
+        } catch (_) {}
+        _err.apply(console, arguments);
+    };
+    if (_rawFetch) {
+        window.fetch = function (input, init) {
+            var url = (typeof input === 'string') ? input : (input && input.url) || '';
+            if (url.indexOf(ENDPOINT) !== -1) return _rawFetch(input, init);
+            var t0 = performance.now();
+            return _rawFetch(input, init).then(function (resp) {
+                var dt = performance.now() - t0;
+                if (dt > SLOW_FETCH_MS) enqueue('warning', 'fetch_slow', { message: url, extra: 'duration_ms=' + Math.round(dt) });
+                if (!resp.ok) enqueue('warning', 'fetch_non_ok', { message: url, extra: 'status=' + resp.status });
+                return resp;
+            }).catch(function (err) {
+                enqueue('error', 'fetch_failed', { message: url, stack: err && err.stack });
+                throw err;
+            });
+        };
+    }
+    setInterval(flush, FLUSH_MS);
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') flush();
+    });
+})();
+</script>
+</body>
+</html>
