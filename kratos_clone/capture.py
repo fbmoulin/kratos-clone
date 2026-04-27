@@ -292,6 +292,7 @@ class HardenedCapture:
         # P1-E: cumulative tracking for disk caps
         self._total_asset_bytes: int = 0
         self._asset_count_dropped: int = 0  # how many assets we refused due to caps
+        self._asset_write_failed: int = 0  # write_bytes raised (disk full, perm, ...)
         # P2-2: scroll budget exceeded flag
         self.scroll_budget_exceeded: bool = False
 
@@ -454,6 +455,7 @@ class HardenedCapture:
             "shadow_skipped_closed": self.shadow_skipped_closed,
             "scroll_budget_exceeded": self.scroll_budget_exceeded,
             "asset_caps_dropped": self._asset_count_dropped,
+            "asset_write_failed": self._asset_write_failed,
             "total_asset_bytes": self._total_asset_bytes,
             "errors": self.errors,
             "config": asdict(self.cfg),
@@ -532,6 +534,13 @@ class HardenedCapture:
             # P1-E: enforce global asset count cap before fetching body
             if len(self.captured_assets) >= self.cfg.max_assets:
                 self._asset_count_dropped += 1
+                # First-drop warning: makes the cap-hit visible during capture
+                # (operators previously had to inspect manifest.json post-hoc).
+                if self._asset_count_dropped == 1:
+                    self.log(
+                        f"⚠️  Asset count cap reached ({self.cfg.max_assets}); "
+                        "subsequent assets dropped — see manifest.asset_caps_dropped"
+                    )
                 return
             try:
                 body = await response.body()
@@ -541,9 +550,23 @@ class HardenedCapture:
                 max_total = self.cfg.max_total_asset_mb * 1024 * 1024
                 if self._total_asset_bytes + len(body) > max_total:
                     self._asset_count_dropped += 1
+                    if self._asset_count_dropped == 1:
+                        self.log(
+                            f"⚠️  Asset bytes cap reached "
+                            f"({self.cfg.max_total_asset_mb} MB); subsequent assets dropped"
+                        )
                     return
                 fname = asset_filename(url)
-                (self.assets_dir / fname).write_bytes(body)
+                # Adversarial review: a write_bytes failure used to be silently
+                # swallowed and counted as a successful capture. Track separately.
+                try:
+                    (self.assets_dir / fname).write_bytes(body)
+                except OSError as write_err:
+                    self._asset_write_failed += 1
+                    self.errors.append(
+                        f"asset_write_failed: {fname} ({write_err.__class__.__name__})"
+                    )
+                    return
                 self.captured_assets[url] = f"assets/{fname}"
                 self._total_asset_bytes += len(body)
                 self.network_resources.append(

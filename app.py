@@ -52,6 +52,17 @@ app = Flask(__name__)
 # in /api/client-errors which can be bypassed via Transfer-Encoding: chunked.
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 
+# Trust X-Forwarded-For only when explicitly enabled — security review caught
+# that without ProxyFix, every external client appears to share the proxy IP
+# (e.g. 127.0.0.1 behind nginx) and the rate limiter applies a single global
+# bucket. Set TRUST_PROXY=1 only when behind a known reverse proxy that strips
+# client-supplied X-Forwarded-For (otherwise spoofable).
+if os.getenv("TRUST_PROXY", "0").strip() == "1":
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+    logger.info("proxy_fix_enabled", x_for=1, x_proto=1)
+
 # P2-5: rate-limit /api/client-errors. Default in-memory storage is fine for
 # single-worker gunicorn (our entrypoint.sh uses --workers 1); for multi-worker
 # deployments wire RATE_LIMIT_STORAGE_URI to redis://...

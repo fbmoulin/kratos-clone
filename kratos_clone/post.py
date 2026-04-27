@@ -20,6 +20,8 @@ from urllib.parse import quote
 from bs4 import BeautifulSoup, Tag
 
 # Attributes that commonly carry a URL value (single URL).
+# Security review extension: cite, data, formaction, action, manifest, background
+# (rare but real on legacy/SVG-embedded pages — broken offline if not rewritten).
 _URL_ATTRS = (
     "src",
     "href",
@@ -32,6 +34,12 @@ _URL_ATTRS = (
     "poster",
     "xlink:href",
     "data-srcset",
+    "cite",  # <blockquote>, <q>, <ins>, <del>
+    "data",  # <object>
+    "formaction",  # <button>, <input type=submit>
+    "action",  # <form>
+    "manifest",  # <html>
+    "background",  # <body> (deprecated but still seen)
 )
 # `srcset` (and `data-srcset`) parse differently — each item is `URL [Wd|N.Mx]`.
 _SRCSET_ATTRS = ("srcset", "data-srcset")
