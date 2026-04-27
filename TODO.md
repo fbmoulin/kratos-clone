@@ -8,29 +8,11 @@ see `docs/AUDIT.md`.
 
 ---
 
-## 🔥 Now (Phase 2 — fix structural bugs)
+## 🔥 Now (Phase 3 — production hardening)
 
-> Phase 1 (factory + tests) shipped 2026-04-27 in `feat/phase1-tests-factory`.
-> 52 tests, pytest job green in CI. See "Done" log below.
-
----
-
-- [ ] **Fix Patch D shadow walker** — `kratos_clone/capture.py:78-101`. Replace
-      `cloneNode(true)` walk with live-DOM walk that emits Declarative Shadow DOM.
-      Reference: gildas-lormeau/SingleFile walker. Add `skipped_closed_shadow_roots`
-      counter to `manifest.json`. (P1-A, ~3h)
-- [ ] **Fix asset write race** — `kratos_clone/capture.py:319`. Track pending
-      `asyncio.Task` handles from response handlers, `await asyncio.gather(*pending)`
-      before `context.close()`. (P1-B, ~1h)
-- [ ] **Refactor generators with semantic lookup** — replace `inv["buttons"][2]`
-      with class-signature search (e.g., button whose classes contain
-      `gradient-to-r from-orange`). Until done, rename files
-      `generate_nexusflow_*.py` to honor scope. (P1-C, ~2h)
-- [ ] **Fix iframe srcdoc unconditional win** — `kratos_clone/capture.py:490`.
-      Length-compare main doc vs srcdoc; log decision; opt-out flag
-      (`KCD_NO_IFRAME_SRCDOC`). (P1-G, ~1h)
-- [ ] **Same-origin predicate** — `urlparse().netloc` compare instead of
-      `"srcdoc" in f_url.lower()` substring check. (P1-D, ~5m)
+> Phase 1 (factory + tests) shipped 2026-04-27 (PR #3, b54939a).
+> Phase 2 (structural bug fixes) shipped 2026-04-27 (`feat/phase2-structural-fixes`).
+> All 5 P1 items from audit closed. 62 tests, pytest green. See "Done" log below.
 
 ---
 
@@ -55,6 +37,7 @@ See `ROADMAP.md` for full breakdown.
 
 ## Done ✅
 
+- [x] **2026-04-27** — **Phase 2 complete**: 5 structural fixes — Patch D shadow walker now walks LIVE DOM (cloneNode bug fixed, emits Declarative Shadow DOM, counts skipped_closed_shadow_roots in manifest); asset write race resolved (asyncio.create_task + gather before context.close, 10s timeout); generators use semantic class-signature lookup (no more IndexError); iframe srcdoc length-compared against main doc (KCD_IFRAME_MIN_RATIO=0.5 default, KCD_NO_IFRAME_SRCDOC opt-out); same-origin via urlparse().netloc. +1 test file (test_generator_helpers.py, 10 cases). Total 62 pytest cases.
 - [x] **2026-04-27** — **Phase 1 complete**: `app.py` refactored to factory (`create_app(start_janitor, run_boot_cleanup)`); `wsgi.py` for production gunicorn; `entrypoint.sh` updated to `wsgi:app`; 52 pytest cases across `test_post.py` (14), `test_capture_helpers.py` (16), `test_client_errors.py` (22); pytest job added to CI; `import app` confirmed side-effect-free (no janitor thread spawned).
 - [x] **2026-04-27** — Multi-agent audit (`docs/AUDIT.md`).
 - [x] **2026-04-27** — Doc honesty pass (this commit): README rewrite, soften 3 overstated claims, add status banners, create ROADMAP/TODO/CLAUDE.

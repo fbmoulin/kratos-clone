@@ -27,17 +27,21 @@
 
 ### 🟠 P1 — High priority
 
-| # | File:line | Finding | Source agent |
-|---|-----------|---------|--------------|
-| **P1-A** | `kratos_clone/capture.py:87-101` | **Patch D shadow walker is a no-op.** `cloneNode(true)` does NOT copy shadow roots per HTML spec — the walker visits a clone where every `shadowRoot` is null. Fix: walk live `document.documentElement` and serialize to string directly (or port SingleFile's walker). | adversarial |
-| **P1-B** | `kratos_clone/capture.py:319` | **Asset write race before `context.close()`.** Response handlers do sync `write_bytes()` from async callbacks; only safeguard is `wait_for_timeout(500)`. Late writes get truncated. Fix: track pending tasks, `asyncio.gather(*pending)` before close. | adversarial |
-| **P1-C** | `scripts/generate_design_system_v{1,2}.py:404-410` | **Generators hardcoded for NexusFlow.** Access `inv["buttons"][2]`, `[3]`, `[7]` as named indices. ANY other site → `IndexError`. Either rename to `generate_nexusflow_*.py` and update WORKFLOW.md, or refactor lookup to find buttons by class signature. | adversarial |
-| **P1-D** | `kratos_clone/capture.py:517` | **Same-origin predicate broken.** `f_url.startswith(self.url) or "srcdoc" in f_url.lower()` — substring `"srcdoc"` in any URL bypasses origin check. Fix: `urlparse(f_url).netloc == urlparse(self.url).netloc or f_url.startswith("about:srcdoc")`. | security |
-| **P1-E** | `kratos_clone/capture.py:_on_response` | **No global asset disk cap.** Per-asset 8 MB cap exists but no count or cumulative bytes cap. Pathological site can write GBs. Fix: env-driven `MAX_TOTAL_BYTES` + `MAX_ASSET_COUNT`. | security |
-| **P1-F** | `kratos_clone/post.py:18` | **`rewrite_html_assets` does naive `str.replace` on raw HTML.** Captured URL substrings appear in scripts/comments/JSON; replacement can corrupt unrelated content. Fix: BeautifulSoup-aware rewriting. | adversarial + security |
-| **P1-G** | `kratos_clone/capture.py:490-507` | **Iframe-srcdoc wins unconditionally** if length > 1000 chars. Cookie banner srcdoc replaces real content. Fix: add length-comparison + log decision; allow opt-out via flag. | adversarial |
-| **P1-H** | _Project root_ | **Zero `tests/` directory.** All testing is 5 inline assertions in CI. Critical hardening (feedback-loop avoidance, IO polyfill, asset rewriting) has no regression coverage. Fix: create pytest suite (top-priority sprint item). | quality |
-| **P1-I** | `templates/index.html:362-364` | **Browser logger ships full URL + userAgent on every error.** Query strings, fragments, sessionId — LGPD/GDPR-relevant if logs go to 3rd party. Fix: ship `location.origin + pathname` only; document privacy stance. | security |
+> **Status update 2026-04-27:** P1-A, P1-B, P1-C, P1-D, P1-G, P1-H all RESOLVED in
+> Phase 1 (`b54939a`) and Phase 2 (`feat/phase2-structural-fixes`). Remaining open:
+> P1-E (asset disk cap), P1-F (BeautifulSoup-aware rewriting), P1-I (PII strip).
+
+| # | File:line | Finding | Source agent | Status |
+|---|-----------|---------|--------------|--------|
+| **P1-A** | `kratos_clone/capture.py:81-157` | **Patch D shadow walker is a no-op.** `cloneNode(true)` does NOT copy shadow roots per HTML spec — the walker visits a clone where every `shadowRoot` is null. Fix: walk live `document.documentElement` and serialize to string directly (or port SingleFile's walker). | adversarial | ✅ RESOLVED Phase 2 — walker now operates on live DOM, emits Declarative Shadow DOM, counts skipped closed roots in manifest |
+| **P1-B** | `kratos_clone/capture.py:_on_response` | **Asset write race before `context.close()`.** Response handlers do sync `write_bytes()` from async callbacks; only safeguard is `wait_for_timeout(500)`. Late writes get truncated. Fix: track pending tasks, `asyncio.gather(*pending)` before close. | adversarial | ✅ RESOLVED Phase 2 — `_on_response_tracked` wraps via `asyncio.create_task`, awaited via `asyncio.gather` (10s timeout) before `context.close()` |
+| **P1-C** | `scripts/generate_design_system_v{1,2}.py` | **Generators hardcoded for NexusFlow.** Access `inv["buttons"][2]`, `[3]`, `[7]` as named indices. ANY other site → `IndexError`. Either rename to `generate_nexusflow_*.py` and update WORKFLOW.md, or refactor lookup to find buttons by class signature. | adversarial | ✅ RESOLVED Phase 2 — `find_button_by_classes(buttons, *required, default_label)` semantic lookup with stub fallback. 10 regression tests in `tests/test_generator_helpers.py` |
+| **P1-D** | `kratos_clone/capture.py:_extract_html` | **Same-origin predicate broken.** `f_url.startswith(self.url) or "srcdoc" in f_url.lower()` — substring `"srcdoc"` in any URL bypasses origin check. Fix: `urlparse(f_url).netloc == urlparse(self.url).netloc or f_url.startswith("about:srcdoc")`. | security | ✅ RESOLVED Phase 2 — `urlparse().netloc` compare + explicit `about:srcdoc` allow-list |
+| **P1-E** | `kratos_clone/capture.py:_on_response` | **No global asset disk cap.** Per-asset 8 MB cap exists but no count or cumulative bytes cap. Pathological site can write GBs. Fix: env-driven `MAX_TOTAL_BYTES` + `MAX_ASSET_COUNT`. | security | 🟡 OPEN — Phase 3 |
+| **P1-F** | `kratos_clone/post.py:18` | **`rewrite_html_assets` does naive `str.replace` on raw HTML.** Captured URL substrings appear in scripts/comments/JSON; replacement can corrupt unrelated content. Fix: BeautifulSoup-aware rewriting. | adversarial + security | 🟡 OPEN — Phase 3 |
+| **P1-G** | `kratos_clone/capture.py:_extract_html` | **Iframe-srcdoc wins unconditionally** if length > 1000 chars. Cookie banner srcdoc replaces real content. Fix: add length-comparison + log decision; allow opt-out via flag. | adversarial | ✅ RESOLVED Phase 2 — length ratio compare against main doc (`KCD_IFRAME_MIN_RATIO=0.5` default, `KCD_NO_IFRAME_SRCDOC=true` opt-out) |
+| **P1-H** | _Project root_ | **Zero `tests/` directory.** All testing is 5 inline assertions in CI. Critical hardening (feedback-loop avoidance, IO polyfill, asset rewriting) has no regression coverage. Fix: create pytest suite (top-priority sprint item). | quality | ✅ RESOLVED Phase 1 — 62 pytest cases across 4 test files, dedicated CI job |
+| **P1-I** | `templates/index.html:362-364` | **Browser logger ships full URL + userAgent on every error.** Query strings, fragments, sessionId — LGPD/GDPR-relevant if logs go to 3rd party. Fix: ship `location.origin + pathname` only; document privacy stance. | security | 🟡 OPEN — Phase 3 |
 
 ### 🟡 P2 — Medium priority
 

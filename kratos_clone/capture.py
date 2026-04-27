@@ -16,6 +16,7 @@ Sources:
 """
 
 from __future__ import annotations
+import asyncio
 import hashlib
 import json
 import os
@@ -78,27 +79,80 @@ PATCH_A_IO_PREFIRE = r"""
 """
 
 PATCH_D_SHADOW_DOM_HELPERS = r"""
-// Patch D — helpers for shadow DOM walker (used in serialization phase).
+// Patch D — recursive walker over the LIVE DOM (audit P1-A fix).
+//
+// PRIOR BUG: the previous implementation used (root || document.documentElement)
+// .cloneNode(true) and then walked the clone looking for shadowRoot. Per HTML spec,
+// cloneNode does NOT copy shadow roots — every element in the clone had
+// shadowRoot === null, so the walker captured zero shadow content despite the
+// manifest reporting Patch D as applied.
+//
+// FIX: walk the live document tree and serialize to a string ourselves, emitting
+// Declarative Shadow DOM <template shadowrootmode="open"> for each open shadow root.
+// Closed shadow roots cannot be serialized by spec — count them and surface in manifest.
+//
+// Returns: { html: string, skipped_closed_shadow_roots: number }.
 window.__kratos_serialize_with_shadow = function(root) {
-  // Walk the DOM and emit Declarative Shadow DOM <template shadowrootmode="open">
-  // for any element with a shadowRoot. Modern browsers re-render this identically.
-  const visit = (node) => {
-    if (node.nodeType !== 1) return; // element only
-    if (node.shadowRoot && node.shadowRoot.mode === 'open') {
-      const tpl = document.createElement('template');
-      tpl.setAttribute('shadowrootmode', 'open');
-      Array.from(node.shadowRoot.childNodes).forEach(c => {
-        tpl.content.appendChild(c.cloneNode(true));
-      });
-      // Also recurse into the shadow tree
-      Array.from(tpl.content.querySelectorAll('*')).forEach(visit);
-      node.insertBefore(tpl, node.firstChild);
+  const VOID = new Set([
+    'area','base','br','col','embed','hr','img','input','link','meta',
+    'param','source','track','wbr'
+  ]);
+  let skippedClosed = 0;
+
+  const escAttr = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escText = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  function serialize(node) {
+    // TEXT_NODE
+    if (node.nodeType === 3) return escText(node.nodeValue);
+    // COMMENT_NODE
+    if (node.nodeType === 8) return '<!--' + node.nodeValue + '-->';
+    // CDATA_SECTION_NODE — drop, not valid in HTML
+    if (node.nodeType !== 1) return '';
+
+    const tag = node.tagName.toLowerCase();
+
+    // Skip <script type="application/json"> bodies? No — preserve everything.
+    let out = '<' + tag;
+    for (let i = 0; i < node.attributes.length; i++) {
+      const a = node.attributes[i];
+      out += ' ' + a.name + '="' + escAttr(a.value) + '"';
     }
-    Array.from(node.children).forEach(visit);
-  };
-  const clone = (root || document.documentElement).cloneNode(true);
-  visit(clone);
-  return '<!DOCTYPE html>\n' + clone.outerHTML;
+    out += '>';
+
+    if (VOID.has(tag)) return out;
+
+    // Emit shadow root BEFORE children (Declarative Shadow DOM convention)
+    const sr = node.shadowRoot;
+    if (sr) {
+      if (sr.mode === 'open') {
+        out += '<template shadowrootmode="open">';
+        // Walk the actual shadow tree (live, not cloned)
+        for (let i = 0; i < sr.childNodes.length; i++) {
+          out += serialize(sr.childNodes[i]);
+        }
+        out += '</template>';
+      } else {
+        // mode === 'closed' — inaccessible by spec; count and skip silently
+        skippedClosed++;
+      }
+    }
+
+    // Children of light DOM
+    for (let i = 0; i < node.childNodes.length; i++) {
+      out += serialize(node.childNodes[i]);
+    }
+
+    out += '</' + tag + '>';
+    return out;
+  }
+
+  const target = root || document.documentElement;
+  const html = '<!DOCTYPE html>\n' + serialize(target);
+  return { html: html, skipped_closed_shadow_roots: skippedClosed };
 };
 """
 
@@ -217,6 +271,8 @@ class HardenedCapture:
         self.captured_assets: dict[str, str] = {}  # url → relative filename
         self.network_resources: list[dict] = []
         self.errors: list[str] = []
+        self.shadow_skipped_closed: int = 0  # Patch D walker stat
+        self._pending_writes: set[asyncio.Task] = set()  # P1-B asset write tracking
 
     def log(self, msg: str) -> None:
         self._log(msg)
@@ -255,8 +311,14 @@ class HardenedCapture:
 
             page = await context.new_page()
 
-            # Network capture
-            page.on("response", self._on_response)
+            # Network capture — wrap async handler in a tracked task so we can
+            # await all pending writes before context.close() (P1-B fix).
+            def _on_response_tracked(response):
+                task = asyncio.create_task(self._on_response(response))
+                self._pending_writes.add(task)
+                task.add_done_callback(self._pending_writes.discard)
+
+            page.on("response", _on_response_tracked)
             page.on("pageerror", lambda e: self.errors.append(f"pageerror: {e}"))
 
             try:
@@ -324,8 +386,24 @@ class HardenedCapture:
                 self.log("🎨 Capturing computed styles...")
                 styles_json = await self._capture_computed_styles(page)
 
-            # Wait for any pending response handlers to drain
-            await page.wait_for_timeout(500)
+            # P1-B fix: explicitly wait for pending response-handler tasks before
+            # closing the context. Previously a 500 ms sleep was the only guard,
+            # which let late asset writes get truncated mid-byte. Now we await
+            # every tracked task; the timeout caps total wait at 10s in case a
+            # response body() never resolves.
+            if self._pending_writes:
+                self.log(
+                    f"⏳ Awaiting {len(self._pending_writes)} pending asset write(s)..."
+                )
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*self._pending_writes, return_exceptions=True),
+                        timeout=10.0,
+                    )
+                except asyncio.TimeoutError:
+                    leaked = len(self._pending_writes)
+                    self.log(f"⚠️  {leaked} asset write(s) did not finish in 10s")
+                    self.errors.append(f"asset_write_timeout: {leaked} pending")
 
             await context.close()
             await browser.close()
@@ -352,6 +430,7 @@ class HardenedCapture:
             "styles_json_size_kb": (
                 round(len(json.dumps(styles_json)) / 1024, 1) if styles_json else None
             ),
+            "shadow_skipped_closed": self.shadow_skipped_closed,
             "errors": self.errors,
             "config": asdict(self.cfg),
             "patches_applied": [
@@ -482,30 +561,61 @@ class HardenedCapture:
         self.log("✓ Three-pass scroll complete")
 
     async def _extract_html(self, page: Page) -> str:
-        """Try iframe-srcdoc extraction first (Aura pattern), fall back to main doc.
+        """Pick the most informative source: main doc, iframe[srcdoc], or same-origin frame.
+
+        P1-G fix: do NOT take iframe[srcdoc] unconditionally. Compare length against
+        the main doc and require the iframe content to be at least
+        `KCD_IFRAME_MIN_RATIO` of main doc length (default 0.5) — otherwise we'd
+        replace 100KB of real content with a 2KB cookie-banner srcdoc.
+        Opt-out entirely via `KCD_NO_IFRAME_SRCDOC=true`.
+
+        P1-D fix: same-origin check uses `urlparse().netloc` instead of substring
+        match (the old `"srcdoc" in f_url.lower()` could be triggered by any URL
+        whose path contained the word "srcdoc").
 
         Uses Patch D shadow DOM walker if enabled.
         """
-        # Iframe srcdoc detection (Aura wraps user sites in iframe[srcdoc])
-        iframe_html = await page.evaluate(r"""
-            () => {
-                const ifr = document.querySelector('iframe[srcdoc]');
-                if (ifr && ifr.srcdoc && ifr.srcdoc.length > 1000) {
-                    // Decode HTML entities in srcdoc
-                    const tmp = document.createElement('textarea');
-                    tmp.innerHTML = ifr.srcdoc;
-                    return tmp.value;
-                }
-                return null;
-            }
-        """)
-        if iframe_html:
-            self.log(
-                "🔍 Detected iframe[srcdoc] — using extracted content as primary HTML"
-            )
-            return iframe_html
+        # Capture main doc first so we can compare lengths
+        main_html = (
+            await page.evaluate("() => document.documentElement.outerHTML") or ""
+        )
+        main_html_len = len(main_html)
 
-        # Same-origin iframe whose document we can access
+        if os.getenv("KCD_NO_IFRAME_SRCDOC", "false").lower() == "true":
+            self.log("🔍 KCD_NO_IFRAME_SRCDOC=true → skipping srcdoc detection")
+        else:
+            # Iframe srcdoc detection (Aura wraps user sites in iframe[srcdoc])
+            iframe_html = await page.evaluate(r"""
+                () => {
+                    const ifr = document.querySelector('iframe[srcdoc]');
+                    if (ifr && ifr.srcdoc && ifr.srcdoc.length > 1000) {
+                        const tmp = document.createElement('textarea');
+                        tmp.innerHTML = ifr.srcdoc;
+                        return tmp.value;
+                    }
+                    return null;
+                }
+            """)
+            if iframe_html:
+                ratio = (len(iframe_html) / main_html_len) if main_html_len else 0.0
+                min_ratio = float(os.getenv("KCD_IFRAME_MIN_RATIO", "0.5"))
+                if ratio >= min_ratio:
+                    self.log(
+                        f"🔍 Using iframe[srcdoc] ({len(iframe_html) // 1024} KB, "
+                        f"ratio={ratio:.2f} ≥ {min_ratio})"
+                    )
+                    return iframe_html
+                else:
+                    self.log(
+                        f"⚠️  iframe[srcdoc] too small ({len(iframe_html)} B vs "
+                        f"{main_html_len} B main, ratio={ratio:.2f} < {min_ratio}) — "
+                        "preferring main doc"
+                    )
+
+        # Same-origin iframe whose document we can access — proper netloc compare
+        from urllib.parse import urlparse
+
+        page_netloc = urlparse(self.url).netloc
         for f in page.frames:
             if f == page.main_frame:
                 continue
@@ -513,29 +623,43 @@ class HardenedCapture:
                 f_url = f.url
                 if not f_url or f_url == "about:blank":
                     continue
-                # Only same-origin or about:srcdoc-style frames
-                if f_url.startswith(self.url.rstrip("/")) or "srcdoc" in f_url.lower():
+                f_netloc = urlparse(f_url).netloc
+                # P1-D: strict netloc match OR explicit about:srcdoc
+                same_origin = bool(f_netloc) and f_netloc == page_netloc
+                is_srcdoc = f_url.startswith("about:srcdoc")
+                if same_origin or is_srcdoc:
                     f_html = await f.evaluate(
                         "() => document.documentElement.outerHTML"
                     )
-                    if len(f_html) > 1000:
+                    if len(f_html) > 1000 and len(f_html) >= main_html_len * 0.5:
                         self.log(
-                            f"🔍 Using same-origin iframe content ({len(f_html) // 1024} KB)"
+                            "🔍 Using same-origin iframe content "
+                            f"({len(f_html) // 1024} KB, "
+                            f"netloc={f_netloc or 'about:srcdoc'})"
                         )
                         return "<!DOCTYPE html>\n" + f_html
-            except Exception:
-                pass
+            except Exception as e:
+                self.log(f"⚠️  iframe enumeration error: {e}")
 
         # Default: main document with shadow walker if enabled
         if self.cfg.use_shadow_walker:
-            html = await page.evaluate(
+            result = await page.evaluate(
                 "() => window.__kratos_serialize_with_shadow(document.documentElement)"
             )
+            html = result["html"]
+            self.shadow_skipped_closed = int(
+                result.get("skipped_closed_shadow_roots", 0)
+            )
             self.log(
-                f"📄 Captured main doc with shadow walker ({len(html) // 1024} KB)"
+                f"📄 Captured main doc with shadow walker ({len(html) // 1024} KB"
+                + (
+                    f", {self.shadow_skipped_closed} closed shadow root(s) skipped)"
+                    if self.shadow_skipped_closed
+                    else ")"
+                )
             )
         else:
-            html = await page.content()
+            html = main_html or await page.content()
             self.log(f"📄 Captured main doc ({len(html) // 1024} KB)")
         return html
 
