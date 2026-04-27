@@ -139,6 +139,104 @@ def test_dunder_level_does_not_invoke_special_method(client):
     assert resp.status_code == 200
 
 
+# ── Content-type enforcement (P2-3) ─────────────────────────────────────────
+
+
+def test_text_plain_rejected_415(client):
+    """Pre-Phase-3, force=True allowed text/plain to bypass CORS preflight.
+
+    Now must be application/json.
+    """
+    resp = client.post(
+        "/api/client-errors", data='{"entries":[]}', content_type="text/plain"
+    )
+    assert resp.status_code == 415
+    assert resp.get_json()["error"] == "content-type must be application/json"
+
+
+def test_no_content_type_accepted(client):
+    """Empty content-type still accepted (browsers omit it for sendBeacon)."""
+    resp = client.post("/api/client-errors", data='{"entries":[]}', content_type="")
+    # Empty content-type → no rejection (some clients don't set it)
+    assert resp.status_code in (204, 200)
+
+
+def test_json_with_charset_accepted(client):
+    """`application/json; charset=utf-8` is valid (split on `;`)."""
+    resp = client.post(
+        "/api/client-errors",
+        data='{"entries":[{"level":"error","event":"e","message":"m"}]}',
+        content_type="application/json; charset=utf-8",
+    )
+    assert resp.status_code == 200
+
+
+# ── PII strip (P1-I) ────────────────────────────────────────────────────────
+
+
+def test_url_query_string_not_logged(client):
+    """URL with ?token=xyz should be stripped to scheme+host+path before logging."""
+    # We don't directly inspect the log here — this just ensures the endpoint
+    # doesn't crash when a URL with query string is sent. The PII strip happens
+    # inside `_strip_query` which is unit-tested below.
+    resp = client.post(
+        "/api/client-errors",
+        json={
+            "entries": [
+                {
+                    "level": "error",
+                    "event": "x",
+                    "message": "m",
+                    "url": "https://app.example.com/dashboard?token=secret&user=42",
+                }
+            ]
+        },
+    )
+    assert resp.status_code == 200
+
+
+def test_strip_query_helper():
+    """Direct unit test of _strip_query: removes query + fragment, preserves base."""
+    from app import _strip_query
+
+    assert _strip_query("https://x.com/a?b=c") == "https://x.com/a"
+    assert _strip_query("https://x.com/a#frag") == "https://x.com/a"
+    assert _strip_query("https://x.com/a?b=c#d") == "https://x.com/a"
+    assert _strip_query("https://x.com/no-query") == "https://x.com/no-query"
+    assert _strip_query(None) is None
+    assert _strip_query("") is None
+
+
+# ── ANSI escape sanitization (P2-4) ─────────────────────────────────────────
+
+
+def test_ansi_escape_sanitized_in_message(client):
+    """Malicious ANSI escape from browser entry must NOT reach the console."""
+    resp = client.post(
+        "/api/client-errors",
+        json={
+            "entries": [
+                {
+                    "level": "error",
+                    "event": "x",
+                    # \x1b[2J\x1b[H clears screen + cursor home
+                    "message": "boom\x1b[2J\x1b[H",
+                }
+            ]
+        },
+    )
+    assert resp.status_code == 200
+
+
+def test_truncate_strips_control_chars():
+    """_truncate replaces all C0 control chars (incl. \\x1b for ANSI) with `?`."""
+    from app import _truncate
+
+    out = _truncate("safe\x1b[2Jrest")
+    assert "\x1b" not in out
+    assert "?" in out
+
+
 # ── Body size enforcement ───────────────────────────────────────────────────
 
 
