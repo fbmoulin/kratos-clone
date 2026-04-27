@@ -3,6 +3,11 @@
 > End-to-end pipeline for reliably cloning modern SPA marketing sites and extracting a living design system.
 > Backed by webrecorder/browsertrix patterns, Apify scraping playbook, Anthropic prompt-engineering docs, and DTCG W3C spec.
 
+> **Implementation status (2026-04-27).** Stages 2 and 4 (Track A) are implemented.
+> Stages 1 (`scripts/probe.py`), 3 (`scripts/post_process.py`), 6 (`scripts/validate.py`)
+> are **aspirational** — referenced in this doc as the target architecture but not yet
+> coded. See `ROADMAP.md` for the phased plan and `docs/AUDIT.md` for current findings.
+
 ---
 
 ## Why the v1 clone missed content
@@ -52,7 +57,7 @@ Output: `probe.json` with `{framework, has_spline, has_iframe_content, estimated
 
 Apply 5 patches to current `downloader.py`:
 
-#### Patch A — IntersectionObserver pre-fire polyfill (HIGHEST IMPACT)
+#### Patch A — IntersectionObserver pre-fire polyfill (HIGH IMPACT)
 
 Inject via `page.add_init_script()` BEFORE `page.goto()`. Replaces native IO with a polyfill that immediately fires the callback for every observed element with `isIntersecting: true`.
 
@@ -72,7 +77,20 @@ window.IntersectionObserver = class {
 };
 ```
 
-Catches ~70% of "missed half the page" cases on Aura/Webflow/Framer-style sites. Effort: S (10 lines).
+Effort: S (10 lines).
+
+> **Caveat — qualitative claim, no A/B isolation.** This patch was shipped together
+> with B/C/D/E. We have not run a controlled experiment with only Patch A enabled to
+> measure its independent contribution. Earlier drafts of this doc claimed "+70%
+> lazy-load capture"; that figure is a design rationale, not a measurement. See
+> `docs/AUDIT.md` § P2-9.
+>
+> **Caveat — animation side effect.** Forcing every observer to fire `isIntersecting:true`
+> at page load triggers all GSAP/AOS/Framer Motion entrance animations simultaneously.
+> For `from` tweens (start invisible → animate to visible) this is correct. For `to`
+> tweens that animate elements TO a different state on scroll, elements may end up in
+> their scrolled-state position at page load — captured DOM is structurally complete
+> but element positions may be semantically wrong.
 
 #### Patch B — `wait_until="networkidle"` + 5s buffer + DOM-stable predicate
 
@@ -125,7 +143,17 @@ Effort: M (50 lines).
 
 #### Patch D — Recursive shadow DOM + iframe serializer
 
-Replace `await page.content()` with a custom serializer that walks shadow roots and same-origin iframes, emitting Declarative Shadow DOM (`<template shadowrootmode="open">`). Modern browsers re-render this identically.
+> **⚠️ KNOWN BROKEN — P1-A in `docs/AUDIT.md`.** The current implementation
+> (`kratos_clone/capture.py:78-101`) uses `cloneNode(true)` which by HTML spec does NOT
+> copy shadow roots. The walker visits a clone where every `shadowRoot` is `null`, so
+> Patch D captures zero shadow DOM content despite the manifest reporting it as
+> applied. Fix is to walk the **live** `document.documentElement` and serialize to a
+> string directly (port the SingleFile pattern). This caveat applies until the bug is
+> fixed in Phase 2 of `ROADMAP.md`.
+
+Goal: replace `await page.content()` with a custom serializer that walks shadow roots and same-origin iframes, emitting Declarative Shadow DOM (`<template shadowrootmode="open">`). Modern browsers re-render this identically.
+
+`mode: 'closed'` shadow roots are inaccessible by spec — we will track skipped count in the manifest after the Phase 2 fix.
 
 Cross-origin iframes (Spline, Calendly) cannot be serialized — capture URL + dimensions + a reference screenshot instead.
 

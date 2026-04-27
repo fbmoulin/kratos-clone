@@ -2,6 +2,19 @@
 
 > Last stage of the pipeline: take a cloned site + extracted design system + a user brand brief → output a personalized HTML the user can deploy. Backed by deep research on production architectures (Aura, Framer, v0, Webflow AI), OpenAI 2026 API surface, and DTCG W3C 2025.10 spec.
 
+> **⚠️ STATUS: SPEC ONLY — NOT YET IMPLEMENTED.**
+>
+> This document is an architecture proposal. There is **no `personalize.py`,
+> no OpenAI integration, no `slots[]` extractor** in the repo today. The code
+> skeletons below are reference implementations for the eventual build, not
+> working code.
+>
+> Tracked as Phase 4 in `ROADMAP.md`. See `docs/AUDIT.md` § P2-11 for prompt-injection
+> mitigations that must be addressed in the implementation.
+>
+> Cost / latency budget cited (~$0.32, ~25-30s) is a forecast based on 2026 pricing
+> at `platform.openai.com/docs/pricing` — verify before committing to a budget.
+
 ---
 
 ## TL;DR — recommended architecture
