@@ -110,13 +110,21 @@ Implemented `docs/PERSONALIZATION.md` as code in branch `feat/personalize-mvp`.
 
 ---
 
-## Phase 6 — DevEx + observability polish (~3h)
+## Phase 6 — DevEx + observability polish ✅ SHIPPED 2026-04-27
 
-| Item | Effort |
-|------|--------|
-| Type hints on `app.py` (currently 0%); `mypy --strict kratos_clone/` in CI | M ~1.5h |
-| `bandit -r` security lint job in CI | XS ~10m |
-| Dependabot grouped weekly updates (`.github/dependabot.yml`) | XS ~10m |
+| Item | Landed in | Notes |
+|------|-----------|-------|
+| Dependabot grouped weekly | `.github/dependabot.yml` | pip + github-actions, separate security group |
+| ruff lint config | `pyproject.toml` `[tool.ruff]` | E/F/W/I/UP/B/C4/SIM rules |
+| mypy CI job | `.github/workflows/ci.yml` (mypy job) | strict on personalize/, permissive on legacy; soft gate (`\|\| true`) until app.py + kratos_clone get full hints |
+| bandit CI job | `.github/workflows/ci.yml` (bandit job) | hard gate on HIGH severity; existing HIGH (B324 MD5, B201 debug=True) annotated as false-positives in code |
+| `request_id` middleware | `app.py` | UUID4 + structlog contextvars; X-Request-ID header in/out; 5 tests |
+| `KCD_*` env-var README table | `README.md` | full reference for capture + server tunables |
+
+**Out of scope (deferred to Phase 7 / cleanup sprint):**
+- Type hints on `app.py` and full `kratos_clone/` (gradual typing — flip the soft gate when ready)
+- Bumping bandit gate to MEDIUM
+- Type stubs for the OpenAI SDK overload-mismatch (see `# type: ignore[call-overload]` in `personalize/openai_client.py`)
 | `request_id` middleware in Flask via `structlog.contextvars.bind_contextvars` for trace correlation | S ~30m |
 | `[tool.ruff]` section in pyproject.toml with `select = ["E", "F", "W", "I", "B", "UP", "SIM"]` + `target-version = "py312"` | XS ~10m |
 | Document all `KCD_*` env vars in README + table | XS ~15m |
