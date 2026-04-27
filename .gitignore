@@ -28,3 +28,11 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Capture output (regenerable; contains large bundles)
+extracted/
+extracted_v2/
+capture/
+
+# Static server background output
+*.log
