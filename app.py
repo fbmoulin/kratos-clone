@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, send_file, Response, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import logging
 import os
 import re
@@ -49,6 +51,18 @@ app = Flask(__name__)
 # Hard 1 MiB body cap on every endpoint — backstop for the per-route check
 # in /api/client-errors which can be bypassed via Transfer-Encoding: chunked.
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+
+# P2-5: rate-limit /api/client-errors. Default in-memory storage is fine for
+# single-worker gunicorn (our entrypoint.sh uses --workers 1); for multi-worker
+# deployments wire RATE_LIMIT_STORAGE_URI to redis://...
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"),
+    # Disabled in tests via app.config["RATELIMIT_ENABLED"] = False to keep
+    # parametrized tests fast.
+    enabled=True,
+)
+limiter.init_app(app)
 
 DOWNLOAD_FOLDER = "downloads"
 
@@ -469,6 +483,7 @@ def _strip_query(url):
 
 
 @app.route("/api/client-errors", methods=["POST"])
+@limiter.limit(os.getenv("CLIENT_ERRORS_RATE_LIMIT", "60 per minute"))
 def client_errors():
     """Ingest frontend error reports from the browser logger."""
     # P2-3: refuse non-JSON content-types. `force=True` previously allowed
