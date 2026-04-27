@@ -48,9 +48,12 @@ structlog.configure(
 logger = structlog.get_logger("app")
 
 app = Flask(__name__)
-# Hard 1 MiB body cap on every endpoint — backstop for the per-route check
-# in /api/client-errors which can be bypassed via Transfer-Encoding: chunked.
-app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+# Global body cap. /api/personalize/run (Phase 4) accepts a logo upload up to
+# 2 MiB plus brief JSON, so the global cap is 8 MiB. Each non-personalize
+# endpoint enforces its own per-route cap (e.g. 64 KiB on /api/client-errors)
+# so the global is just the chunked-transfer-encoding backstop, not the actual
+# threshold for non-upload endpoints.
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
 # Trust X-Forwarded-For only when explicitly enabled — security review caught
 # that without ProxyFix, every external client appears to share the proxy IP
@@ -554,6 +557,104 @@ def client_errors():
     if accepted == 0:
         return ("", 204)  # RFC 9110: 204 must not have a body
     return jsonify({"accepted": accepted}), 200
+
+
+# ── Phase 4 personalization routes ──────────────────────────────────────────
+
+_PERSONALIZE_BRIEF_MAX_BYTES = 4 * 1024  # 4 KiB JSON brief
+_PERSONALIZE_RUN_MAX_BYTES = 5 * 1024 * 1024  # 5 MiB multipart (logo ≤ 2 MiB)
+_PERSONALIZE_LOGO_MAX_BYTES = 2 * 1024 * 1024
+
+
+@app.route("/personalize")
+def personalize_page():
+    """Render the Phase 4 intake form. No auth, mirrors the legacy / route."""
+    return render_template("personalize.html")
+
+
+@app.route("/api/personalize/structure", methods=["POST"])
+@limiter.limit(os.getenv("PERSONALIZE_STRUCTURE_RATE_LIMIT", "5 per minute"))
+def personalize_structure():
+    """Step 2 — structure a free-form brief into fields via gpt-5-mini."""
+    ctype = (request.content_type or "").split(";", 1)[0].strip().lower()
+    if ctype != "application/json":
+        return jsonify({"error": "content-type must be application/json"}), 415
+    if (request.content_length or 0) > _PERSONALIZE_BRIEF_MAX_BYTES:
+        return jsonify({"error": "payload too large"}), 413
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "invalid json body"}), 400
+    raw_brief = body.get("brief")
+    if not isinstance(raw_brief, str) or not raw_brief.strip():
+        return jsonify({"error": "brief field required (non-empty string)"}), 400
+
+    from personalize.openai_client import BudgetExceededError, OpenAIBrandClient
+
+    try:
+        client = OpenAIBrandClient(max_budget_usd=0.05)
+        structured = client.structure_brief(raw_brief)
+    except BudgetExceededError as exc:
+        logger.warning("personalize_structure_budget", error=str(exc))
+        return jsonify({"error": "budget exceeded"}), 429
+    except Exception as exc:
+        logger.error("personalize_structure_failed", error=str(exc))
+        return jsonify({"error": "structure call failed"}), 502
+    return jsonify(structured), 200
+
+
+@app.route("/api/personalize/run", methods=["POST"])
+@limiter.limit(os.getenv("PERSONALIZE_RUN_RATE_LIMIT", "2 per minute"))
+def personalize_run():
+    """Steps 4–8 — apply personalization to a captured site."""
+    if (request.content_length or 0) > _PERSONALIZE_RUN_MAX_BYTES:
+        return jsonify({"error": "payload too large"}), 413
+    brief_raw = request.form.get("brief")
+    html_dir_str = request.form.get("html_dir")
+    logo_file = request.files.get("logo")
+    if not (brief_raw and html_dir_str and logo_file):
+        return jsonify({"error": "brief, html_dir, logo required"}), 400
+
+    import json as _json
+
+    try:
+        brief = _json.loads(brief_raw)
+    except _json.JSONDecodeError:
+        return jsonify({"error": "brief must be JSON-encoded"}), 400
+    if not isinstance(brief, dict):
+        return jsonify({"error": "brief must be a JSON object"}), 400
+
+    logo_bytes = logo_file.read(_PERSONALIZE_LOGO_MAX_BYTES + 1)
+    if len(logo_bytes) > _PERSONALIZE_LOGO_MAX_BYTES:
+        return jsonify({"error": "logo exceeds 2 MiB cap"}), 413
+
+    # Confine html_dir to DOWNLOAD_FOLDER to prevent traversal.
+    html_dir = os.path.realpath(os.path.join(DOWNLOAD_FOLDER, html_dir_str))
+    base = os.path.realpath(DOWNLOAD_FOLDER)
+    if not html_dir.startswith(base + os.sep) and html_dir != base:
+        return jsonify({"error": "html_dir must be inside downloads/"}), 400
+
+    from personalize.openai_client import BudgetExceededError
+    from personalize.pipeline import run_pipeline
+
+    try:
+        out_path = run_pipeline(
+            html_dir,
+            raw_brief="",  # not used when override provided
+            logo_bytes=logo_bytes,
+            structured_brief_override=brief,
+        )
+    except FileNotFoundError as exc:
+        return jsonify({"error": f"missing input: {exc}"}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except BudgetExceededError as exc:
+        logger.warning("personalize_run_budget", error=str(exc))
+        return jsonify({"error": "budget exceeded"}), 429
+    except Exception as exc:
+        logger.error("personalize_run_failed", error=str(exc))
+        return jsonify({"error": "pipeline failed"}), 502
+
+    return jsonify({"output_path": str(out_path) if out_path else None}), 200
 
 
 if __name__ == "__main__":
