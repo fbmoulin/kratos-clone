@@ -1,0 +1,43 @@
+{
+  "sections": [
+    {
+      "kind": "hero",
+      "selector_root": ".hero",
+      "headline_structure": "word-wrappers",
+      "ctas": [
+        {"selector": ".hero button.primary"},
+        {"selector": ".hero button.secondary"}
+      ]
+    },
+    {
+      "kind": "features",
+      "items": [
+        {
+          "title_selector": "#features h3:nth-of-type(1)",
+          "body_selector": "#features p:nth-of-type(1)"
+        },
+        {
+          "title_selector": "#features h3:nth-of-type(2)",
+          "body_selector": "#features p:nth-of-type(2)"
+        }
+      ]
+    },
+    {
+      "kind": "pricing",
+      "tiers": [
+        {
+          "name_selector": "#pricing [data-tier='1'] h3",
+          "price_selector": "#pricing [data-tier='1'] .price"
+        }
+      ]
+    }
+  ],
+  "images": [
+    {
+      "id": "hero",
+      "selector": ".perspective-container img",
+      "width": 1280,
+      "height": 800
+    }
+  ]
+}
