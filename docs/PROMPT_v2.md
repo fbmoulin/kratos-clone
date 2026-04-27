@@ -8,6 +8,13 @@
 >
 > Key changes vs v1: XML structure · IDENTIFY-before-EXTRACT phase · verbatim class rule · verification block · added 4 sections (Accessibility, Dark Mode, States, Class Inventory) · embedded DTCG JSON · coverage scorecard.
 
+> **Companion implementation status.** This prompt assumes the upstream pipeline has
+> emitted `_inventory.json` + a clean `index.html`. Today's `scripts/inventory.py`
+> produces the inventory, and the capture removes destructive `<style data-scroll-fix>`
+> blocks via `kratos_clone/post.py` when fed through `python -m kratos_clone`. The
+> programmatic generator (`scripts/generate_design_system_v2.py`) is an alternative
+> Track-A path; this prompt is the LLM-driven Track B. See `docs/WORKFLOW.md` § Stage 4.
+
 ---
 
 ## Use
