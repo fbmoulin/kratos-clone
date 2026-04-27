@@ -222,6 +222,22 @@ class CaptureConfig:
             os.getenv("KCD_BLOCK_ANALYTICS", "true").lower() == "true"
         )
     )
+    # P2-2: wall-clock budget for the 3-pass scroll loop. A pathological page
+    # with infinite-scroll growing scrollHeight every pass could otherwise run
+    # for many minutes (40s+ already observed at 50,000 px). When exceeded we
+    # break out of the loop and emit `scroll_budget_exceeded: true` in manifest.
+    max_scroll_seconds: float = field(
+        default_factory=lambda: float(os.getenv("KCD_MAX_SCROLL_S", "120"))
+    )
+    # P1-E: global asset disk caps. Per-asset cap (8 MB) is unchanged but a
+    # malicious site can serve 1000+ small assets to fill the disk. Cap by
+    # cumulative bytes AND count.
+    max_total_asset_mb: int = field(
+        default_factory=lambda: int(os.getenv("KCD_MAX_TOTAL_MB", "200"))
+    )
+    max_assets: int = field(
+        default_factory=lambda: int(os.getenv("KCD_MAX_ASSETS", "500"))
+    )
 
 
 # ── Asset hashing & filename helpers ─────────────────────────────────────────
@@ -273,6 +289,11 @@ class HardenedCapture:
         self.errors: list[str] = []
         self.shadow_skipped_closed: int = 0  # Patch D walker stat
         self._pending_writes: set[asyncio.Task] = set()  # P1-B asset write tracking
+        # P1-E: cumulative tracking for disk caps
+        self._total_asset_bytes: int = 0
+        self._asset_count_dropped: int = 0  # how many assets we refused due to caps
+        # P2-2: scroll budget exceeded flag
+        self.scroll_budget_exceeded: bool = False
 
     def log(self, msg: str) -> None:
         self._log(msg)
@@ -431,6 +452,9 @@ class HardenedCapture:
                 round(len(json.dumps(styles_json)) / 1024, 1) if styles_json else None
             ),
             "shadow_skipped_closed": self.shadow_skipped_closed,
+            "scroll_budget_exceeded": self.scroll_budget_exceeded,
+            "asset_caps_dropped": self._asset_count_dropped,
+            "total_asset_bytes": self._total_asset_bytes,
             "errors": self.errors,
             "config": asdict(self.cfg),
             "patches_applied": [
@@ -505,13 +529,23 @@ class HardenedCapture:
                 return
             if url in self.captured_assets:
                 return
+            # P1-E: enforce global asset count cap before fetching body
+            if len(self.captured_assets) >= self.cfg.max_assets:
+                self._asset_count_dropped += 1
+                return
             try:
                 body = await response.body()
                 if len(body) > 8 * 1024 * 1024:  # 8 MB cap per asset
                     return
+                # P1-E: enforce cumulative bytes cap before write
+                max_total = self.cfg.max_total_asset_mb * 1024 * 1024
+                if self._total_asset_bytes + len(body) > max_total:
+                    self._asset_count_dropped += 1
+                    return
                 fname = asset_filename(url)
                 (self.assets_dir / fname).write_bytes(body)
                 self.captured_assets[url] = f"assets/{fname}"
+                self._total_asset_bytes += len(body)
                 self.network_resources.append(
                     {"url": url, "size": len(body), "ctype": ctype}
                 )
@@ -521,35 +555,55 @@ class HardenedCapture:
             self.errors.append(f"response_handler: {e}")
 
     async def _three_pass_scroll(self, page: Page):
-        """Patch C — three-pass scroll: forward-fast, forward-slow, backward-slow."""
+        """Patch C — three-pass scroll: forward-fast, forward-slow, backward-slow.
+
+        P2-2 fix: hard wall-clock budget (`KCD_MAX_SCROLL_S`, default 120s).
+        Pages with infinite-scroll feeds can grow scrollHeight every pass,
+        producing an effectively unbounded loop. Once the budget is exceeded
+        we break out and emit `scroll_budget_exceeded: true` in manifest so
+        operators can flag captures that finished early.
+        """
+        budget_start = time.time()
+
+        def over_budget() -> bool:
+            return (time.time() - budget_start) > self.cfg.max_scroll_seconds
+
         h = await page.evaluate("() => document.body.scrollHeight")
         vh = await page.evaluate("() => window.innerHeight")
 
         # Pass 1: forward fast (warm-up)
-        if self.cfg.scroll_passes >= 1:
+        if self.cfg.scroll_passes >= 1 and not over_budget():
             self.log("📜 Scroll pass 1/3 (forward fast)...")
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_fast)):
+                if over_budget():
+                    self.scroll_budget_exceeded = True
+                    break
                 await page.evaluate(
                     f"window.scrollTo({{top: {y}, behavior: 'instant'}})"
                 )
                 await page.wait_for_timeout(self.cfg.scroll_settle_ms_fast)
 
         # Pass 2: forward slow (settle observers)
-        if self.cfg.scroll_passes >= 2:
+        if self.cfg.scroll_passes >= 2 and not over_budget():
             self.log("📜 Scroll pass 2/3 (forward slow)...")
-            # Re-measure scrollHeight (it may have grown after pass 1 lazy-loads)
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_slow)):
+                if over_budget():
+                    self.scroll_budget_exceeded = True
+                    break
                 await page.evaluate(
                     f"window.scrollTo({{top: {y}, behavior: 'instant'}})"
                 )
                 await page.wait_for_timeout(self.cfg.scroll_settle_ms_slow)
 
         # Pass 3: backward slow (parallax/sticky)
-        if self.cfg.scroll_passes >= 3:
+        if self.cfg.scroll_passes >= 3 and not over_budget():
             self.log("📜 Scroll pass 3/3 (backward slow)...")
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(h, -vh, -int(vh * self.cfg.scroll_jump_ratio_slow)):
+                if over_budget():
+                    self.scroll_budget_exceeded = True
+                    break
                 await page.evaluate(
                     f"window.scrollTo({{top: {max(0, y)}, behavior: 'instant'}})"
                 )
@@ -558,7 +612,14 @@ class HardenedCapture:
         # Return to top
         await page.evaluate("window.scrollTo({top: 0, behavior: 'instant'})")
         await page.wait_for_timeout(500)
-        self.log("✓ Three-pass scroll complete")
+        elapsed = time.time() - budget_start
+        if self.scroll_budget_exceeded:
+            self.log(
+                f"⚠️  Scroll budget exceeded ({elapsed:.1f}s > "
+                f"{self.cfg.max_scroll_seconds}s) — capture may be incomplete"
+            )
+        else:
+            self.log(f"✓ Three-pass scroll complete ({elapsed:.1f}s)")
 
     async def _extract_html(self, page: Page) -> str:
         """Pick the most informative source: main doc, iframe[srcdoc], or same-origin frame.

@@ -353,8 +353,16 @@
             }
         }
 
+        // Hard cap on queue size — protects against unbounded memory growth
+        // when flush() never runs (e.g., extension blocks setInterval) or when
+        // the page generates errors faster than they can be shipped (L3 audit).
+        var QUEUE_HARD_MAX = 200;
+
         function enqueue(level, event, fields) {
             try {
+                if (queue.length >= QUEUE_HARD_MAX) {
+                    queue.shift(); // drop oldest, keep newest
+                }
                 queue.push(Object.assign({
                     level: level,
                     event: event,
