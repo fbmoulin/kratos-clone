@@ -8,31 +8,12 @@ see `docs/AUDIT.md`.
 
 ---
 
-## 🔥 Now (Phase 1 — tests + factory)
+## 🔥 Now (Phase 2 — fix structural bugs)
 
-- [ ] **Refactor `app.py` to factory pattern** — `create_app(start_janitor=True)` so
-      `import app` has no side effects (kills `cleanup_downloads_folder()` and janitor
-      thread on import). Unblocks all pytest work. (`app.py:80,188` — AUDIT P2-7, ~1h)
-- [ ] **Create `tests/test_post.py`** — 7 cases for `rewrite_html_assets()`:
-      empty captured set; single asset exact match; prefix-collision URL pair (`/a.png`
-      vs `/a.png/v2.png`); percent-encoded URL in HTML, raw in dict; orphan CSS with
-      `</head>` present; orphan CSS with no head, `<body>` only; orphan CSS with neither.
-      Plus 3 cases for `strip_scroll_fix` (basic, uppercase TRUE, malformed-attribute).
-      (~1.5h)
-- [ ] **Create `tests/test_capture_helpers.py`** — `asset_filename` (8: trailing slash,
-      query, fragment, unicode, double-ext, no-ext, `..`/spaces sanitization, length cap),
-      `hash_url` (2: stable, distinct), `contrast_ratio` (4: black/white = 21, mid-grays
-      = WCAG-cited values). (~1.5h)
-- [ ] **Create `tests/test_client_errors.py`** — lift the 5 inline asserts from
-      `.github/workflows/ci.yml` into pytest. Add: `level='invalid'` coerced to error,
-      `level='__class__'` rejected, `_truncate` boundary at exactly `_FRONTEND_MAX_FIELD_LEN`,
-      RFC 9110 enforcement (204 → empty body). (~1.5h)
-- [ ] **Add pytest job to CI** — alongside ruff + smoke. `pytest -q --tb=short`.
-      Keep smoke job for now as a defensive backup. (~30m)
+> Phase 1 (factory + tests) shipped 2026-04-27 in `feat/phase1-tests-factory`.
+> 52 tests, pytest job green in CI. See "Done" log below.
 
 ---
-
-## 🟠 Next (Phase 2 — fix structural bugs)
 
 - [ ] **Fix Patch D shadow walker** — `kratos_clone/capture.py:78-101`. Replace
       `cloneNode(true)` walk with live-DOM walk that emits Declarative Shadow DOM.
@@ -74,6 +55,7 @@ See `ROADMAP.md` for full breakdown.
 
 ## Done ✅
 
+- [x] **2026-04-27** — **Phase 1 complete**: `app.py` refactored to factory (`create_app(start_janitor, run_boot_cleanup)`); `wsgi.py` for production gunicorn; `entrypoint.sh` updated to `wsgi:app`; 52 pytest cases across `test_post.py` (14), `test_capture_helpers.py` (16), `test_client_errors.py` (22); pytest job added to CI; `import app` confirmed side-effect-free (no janitor thread spawned).
 - [x] **2026-04-27** — Multi-agent audit (`docs/AUDIT.md`).
 - [x] **2026-04-27** — Doc honesty pass (this commit): README rewrite, soften 3 overstated claims, add status banners, create ROADMAP/TODO/CLAUDE.
 - [x] **2026-04-27** — Branch protection ruleset (squash/rebase + status checks required, admin bypass allowed).

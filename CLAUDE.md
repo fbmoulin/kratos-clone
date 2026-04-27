@@ -65,10 +65,13 @@ uv run ruff check kratos_clone/ scripts/ app.py
 uv run ruff format --check kratos_clone/ scripts/ app.py
 ```
 
-### Tests (Phase 1 — not yet implemented)
+### Tests
 ```bash
-uv run pytest -q
+uv run pytest -q                    # 52 tests, ~0.6s
+uv run pytest tests/test_post.py -v # specific file
 ```
+
+`tests/conftest.py` provides `flask_app` + `client` fixtures via `create_app(start_janitor=False, run_boot_cleanup=False)` — no janitor threads, no boot cleanup, deterministic between tests.
 
 ### CI status check
 ```bash
