@@ -129,26 +129,47 @@ def _apply_word_wrappers(target: Tag, value: str) -> None:
 
 
 def _apply_palette(soup: BeautifulSoup, palette: dict[str, str]) -> BeautifulSoup:
+    """Swap Tailwind orange-{400,500,600} classes for brand-color arbitrary values.
+
+    Iterates every element's ``class`` attribute and rewrites class tokens
+    individually. Originally implemented as a regex on the serialized HTML +
+    re-parse, which Gemini bot review flagged as a correctness risk: text
+    content or IDs containing the literal string ``from-orange-500`` would
+    have been rewritten too. Iterating the DOM scopes the swap to actual
+    class attributes.
+    """
     primary = palette["primary"].lstrip("#")
     primary_hover = palette["primary_hover"].lstrip("#")
     primary_pressed = palette["primary_pressed"].lstrip("#")
-    html = str(soup)
-    html = re.sub(
-        rf"\b({_PREFIX_GROUP})-orange-500\b",
-        rf"\1-[#{primary}]",
-        html,
-    )
-    html = re.sub(
-        rf"\b({_PREFIX_GROUP})-orange-600\b",
-        rf"\1-[#{primary_pressed}]",
-        html,
-    )
-    html = re.sub(
-        rf"\b({_PREFIX_GROUP})-orange-400\b",
-        rf"\1-[#{primary_hover}]",
-        html,
-    )
-    return BeautifulSoup(html, "html.parser")
+    swap_map = {
+        "500": f"[#{primary}]",
+        "600": f"[#{primary_pressed}]",
+        "400": f"[#{primary_hover}]",
+    }
+    token_re = re.compile(rf"^({_PREFIX_GROUP})-orange-(400|500|600)$")
+
+    for tag in soup.find_all(class_=True):
+        raw = tag.get("class")
+        # ``class`` may be a single string (when parsed by html.parser) or a
+        # list (BeautifulSoup multi-valued attribute with lxml). Normalize.
+        tokens: list[str]
+        if isinstance(raw, str):
+            tokens = raw.split()
+        elif raw is None:
+            tokens = []
+        else:
+            tokens = list(raw)
+        new_classes: list[str] = []
+        for token in tokens:
+            match = token_re.match(token)
+            if match:
+                prefix, shade = match.groups()
+                new_classes.append(f"{prefix}-{swap_map[shade]}")
+            else:
+                new_classes.append(token)
+        # bs4 accepts list[str] as a multi-valued attr; serialization joins on space.
+        tag["class"] = " ".join(new_classes)
+    return soup
 
 
 def _apply_image_patches(
