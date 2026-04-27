@@ -25,8 +25,10 @@ logging.basicConfig(
 
 _processors = [
     structlog.contextvars.merge_contextvars,
+    structlog.stdlib.add_logger_name,
     structlog.processors.add_log_level,
     structlog.processors.TimeStamper(fmt="iso", utc=True),
+    structlog.processors.format_exc_info,
 ]
 if _log_format == "json":
     _processors.append(structlog.processors.JSONRenderer())
@@ -36,13 +38,16 @@ else:
 structlog.configure(
     processors=_processors,
     wrapper_class=structlog.make_filtering_bound_logger(_log_level),
-    logger_factory=structlog.PrintLoggerFactory(),
+    logger_factory=structlog.stdlib.LoggerFactory(),
     cache_logger_on_first_use=True,
 )
 
 logger = structlog.get_logger("app")
 
 app = Flask(__name__)
+# Hard 1 MiB body cap on every endpoint — backstop for the per-route check
+# in /api/client-errors which can be bypassed via Transfer-Encoding: chunked.
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 
 DOWNLOAD_FOLDER = "downloads"
 if not os.path.exists(DOWNLOAD_FOLDER):
@@ -420,16 +425,29 @@ def _truncate(value, limit=_FRONTEND_MAX_FIELD_LEN):
 @app.route("/api/client-errors", methods=["POST"])
 def client_errors():
     """Ingest frontend error reports from the browser logger."""
+    # Per-route cap. Flask's app-wide MAX_CONTENT_LENGTH (1 MiB) is the backstop
+    # for chunked-transfer-encoding requests where Content-Length is missing.
+    # `cache=True` so request.get_json() can re-read after this size check.
     raw_len = request.content_length or 0
     if raw_len > _FRONTEND_MAX_BODY_BYTES:
         return jsonify({"error": "payload too large"}), 413
 
+    raw_body = request.get_data(cache=True)
+    if len(raw_body) > _FRONTEND_MAX_BODY_BYTES:
+        return jsonify({"error": "payload too large"}), 413
+
     try:
-        body = request.get_json(force=True, silent=True) or {}
+        body = request.get_json(force=True, silent=True)
     except Exception:
         return jsonify({"error": "invalid json"}), 400
 
-    entries = body.get("entries") or []
+    if not isinstance(body, dict):
+        # Empty/null/list/string bodies — no entries to log, return 204 (RFC 9110)
+        return ("", 204)
+
+    entries = body.get("entries")
+    if entries is None:
+        return ("", 204)
     if not isinstance(entries, list):
         return jsonify({"error": "entries must be a list"}), 400
 
@@ -438,7 +456,7 @@ def client_errors():
         if not isinstance(entry, dict):
             continue
         level = str(entry.get("level", "error")).lower()
-        if level not in ("debug", "info", "warning", "error"):
+        if level not in ("debug", "info", "warning", "error", "critical"):
             level = "error"
         log = getattr(frontend_logger, level, frontend_logger.error)
         log(
@@ -452,7 +470,9 @@ def client_errors():
             extra=_truncate(entry.get("extra")),
         )
         accepted += 1
-    return jsonify({"accepted": accepted}), 204 if accepted == 0 else 200
+    if accepted == 0:
+        return ("", 204)  # RFC 9110: 204 must not have a body
+    return jsonify({"accepted": accepted}), 200
 
 
 if __name__ == "__main__":

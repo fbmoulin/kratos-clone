@@ -314,6 +314,10 @@
         var FLUSH_MS = 5000;
         var SLOW_FETCH_MS = 5000;
         var queue = [];
+        // Capture pristine references BEFORE any wrappers (avoids feedback loop:
+        // if /api/client-errors is slow/4xx, the wrapped fetch would re-enqueue
+        // each flush, growing the queue unboundedly).
+        var _rawFetch = window.fetch ? window.fetch.bind(window) : null;
         var sessionId = (function () {
             try {
                 var k = 'fe_session_id';
@@ -335,9 +339,11 @@
                     sent = navigator.sendBeacon(ENDPOINT, new Blob([payload], { type: 'application/json' }));
                 }
             } catch (_) { /* fall through to fetch */ }
-            if (!sent) {
+            if (!sent && _rawFetch) {
                 try {
-                    fetch(ENDPOINT, {
+                    // Use pristine fetch — bypasses the wrapper so a slow/failing
+                    // logger endpoint never feeds back into its own queue.
+                    _rawFetch(ENDPOINT, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: payload,
@@ -379,25 +385,33 @@
             });
         });
 
-        // 3) console.error wrapper (preserves original behavior)
+        // 3) console.error wrapper (preserves original behavior + captures stacks)
         var _err = console.error.bind(console);
         console.error = function () {
             try {
-                var args = Array.prototype.slice.call(arguments).map(function (a) {
-                    return typeof a === 'string' ? a : (a && a.message) || JSON.stringify(a);
-                }).join(' ');
-                enqueue('error', 'console_error', { message: args });
+                var stack = null;
+                var parts = Array.prototype.slice.call(arguments).map(function (a) {
+                    if (a instanceof Error) {
+                        if (!stack) stack = a.stack || null;
+                        return a.message || String(a);
+                    }
+                    return typeof a === 'string' ? a : JSON.stringify(a);
+                });
+                enqueue('error', 'console_error', { message: parts.join(' '), stack: stack });
             } catch (_) { /* swallow */ }
             _err.apply(console, arguments);
         };
 
         // 4) Slow-fetch detector + non-OK responses
-        if (window.fetch) {
-            var _fetch = window.fetch.bind(window);
+        // CRITICAL: skip our own logger endpoint to avoid feedback loops.
+        if (_rawFetch) {
             window.fetch = function (input, init) {
                 var url = (typeof input === 'string') ? input : (input && input.url) || '';
+                if (url.indexOf(ENDPOINT) !== -1) {
+                    return _rawFetch(input, init);  // pristine path — no instrumentation
+                }
                 var t0 = performance.now();
-                return _fetch(input, init).then(function (resp) {
+                return _rawFetch(input, init).then(function (resp) {
                     var dt = performance.now() - t0;
                     if (dt > SLOW_FETCH_MS) {
                         enqueue('warning', 'fetch_slow', { message: url, extra: 'duration_ms=' + Math.round(dt) });

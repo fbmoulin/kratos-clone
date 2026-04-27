@@ -110,15 +110,27 @@ jobs:
           assert resp.status_code == 200, f'expected 200, got {resp.status_code}'
           assert resp.get_json()['accepted'] == 1
 
-          # Validation: bad payload silently parses to empty entries -> 204
+          # Validation: bad payload silently parses to None -> 204 (RFC 9110, no body)
           resp_bad = client.post('/api/client-errors', data='not json',
                                   content_type='application/json')
-          assert resp_bad.status_code in (200, 204), 'silent json parse should return 2xx'
+          assert resp_bad.status_code == 204, 'bad json -> 204 no content'
+          assert resp_bad.data == b'', '204 must not have a body'
+
+          # Body as JSON array (not dict) — must NOT crash with AttributeError
+          resp_arr = client.post('/api/client-errors', json=['x', 'y'])
+          assert resp_arr.status_code == 204, 'list body -> 204'
 
           # Invalid shape: entries not a list -> 400
           resp_shape = client.post('/api/client-errors',
                                     json={'entries': 'not a list'})
           assert resp_shape.status_code == 400, 'invalid entries shape must 400'
+
+          # critical level accepted (regression for level whitelist)
+          resp_crit = client.post('/api/client-errors',
+              json={'entries': [{'level': 'critical', 'event': 'fatal',
+                                  'message': 'boom'}]})
+          assert resp_crit.status_code == 200
+          assert resp_crit.get_json()['accepted'] == 1
 
           # Body cap
           resp_big = client.post('/api/client-errors', data='x' * 50000,
