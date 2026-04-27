@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff check
+        run: ruff check kratos_clone/ scripts/ --output-format=github
+
+      - name: Ruff format check
+        run: ruff format --check kratos_clone/ scripts/
+
+  smoke:
+    name: Import + module smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime deps
+        run: |
+          pip install --upgrade pip
+          pip install playwright beautifulsoup4 requests urllib3
+
+      - name: Verify kratos_clone imports
+        run: |
+          python -c "
+          from kratos_clone.capture import HardenedCapture, CaptureConfig
+          from kratos_clone.post import rewrite_html_assets, strip_scroll_fix
+          cfg = CaptureConfig()
+          assert cfg.scroll_passes == 3, 'default scroll_passes must be 3'
+          assert cfg.use_io_polyfill is True, 'IO polyfill must default on'
+          print('kratos_clone OK — config defaults verified')
+          "
+
+      - name: Verify CLI entry point parses
+        run: python -m kratos_clone --help
+
+      - name: Smoke test scripts/ imports
+        run: |
+          python -c "
+          import importlib.util, pathlib
+          for f in pathlib.Path('scripts').glob('*.py'):
+              spec = importlib.util.spec_from_file_location(f.stem, f)
+              # Just compile, do not execute (they expect specific input files)
+              with open(f) as fh: compile(fh.read(), str(f), 'exec')
+              print(f'{f.name}: compiles')
+          "
+
+      - name: Verify post.py round-trip
+        run: |
+          python -c "
+          from kratos_clone.post import rewrite_html_assets, strip_scroll_fix
+          html = '<html><head></head><body><img src=\"https://x.com/a.png\"></body></html>'
+          assets = {'https://x.com/a.png': 'assets/a_abc.png'}
+          out = rewrite_html_assets(html, assets, 'https://x.com')
+          assert 'assets/a_abc.png' in out, 'asset rewrite must replace URL'
+          assert 'https://x.com/a.png' not in out, 'original URL must be gone'
+
+          html2 = '<style data-scroll-fix=\"true\">.x{transform:none !important}</style><p>keep</p>'
+          out2 = strip_scroll_fix(html2)
+          assert 'data-scroll-fix' not in out2
+          assert '<p>keep</p>' in out2
+          print('post.py: rewrite + strip OK')
+          "

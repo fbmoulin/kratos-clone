@@ -1,0 +1,25 @@
+kratos-clone
+============
+
+This project is a fork of and extends asimov-academy/Website-Downloader:
+  https://github.com/asimov-academy/Website-Downloader
+
+The original Website-Downloader is authored by Asimov Academy and was
+published with the following note in its README:
+
+  "Uso pessoal e educacional."  (Personal and educational use.)
+
+The original author did not publish an explicit OSI-approved license file,
+so the original sources retain their original terms. This fork's MIT license
+applies only to original contributions made in this repository, including:
+
+  - kratos_clone/ (hardened Playwright capture module)
+  - scripts/ (design system inventory + generators)
+  - docs/ (PROMPT_v2, WORKFLOW, PERSONALIZATION specs)
+  - LICENSE, NOTICE, CI configuration files
+
+Modifications to upstream files (e.g., downloader.py) carry the same
+"personal and educational use" terms as the original work.
+
+For commercial use of any code derived from the upstream Website-Downloader,
+contact Asimov Academy directly.

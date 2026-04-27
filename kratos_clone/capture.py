@@ -16,10 +16,12 @@ Sources:
 """
 
 from __future__ import annotations
+import hashlib
 import json
 import os
 import re
 import time
+import urllib.parse
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional, Callable
@@ -150,8 +152,9 @@ class CaptureConfig:
         default_factory=lambda: os.getenv("KCD_HEADED", "false").lower() == "true"
     )
     capture_computed_styles: bool = field(
-        default_factory=lambda: os.getenv("KCD_CAPTURE_COMPUTED_STYLES", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.getenv("KCD_CAPTURE_COMPUTED_STYLES", "true").lower() == "true"
+        )
     )
     use_io_polyfill: bool = field(
         default_factory=lambda: os.getenv("KCD_IO_POLYFILL", "true").lower() == "true"
@@ -161,16 +164,13 @@ class CaptureConfig:
     )
     disable_lenis: bool = True
     block_analytics: bool = field(
-        default_factory=lambda: os.getenv("KCD_BLOCK_ANALYTICS", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.getenv("KCD_BLOCK_ANALYTICS", "true").lower() == "true"
+        )
     )
 
 
 # ── Asset hashing & filename helpers ─────────────────────────────────────────
-import hashlib
-import urllib.parse
-
-
 def hash_url(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:12]
 
