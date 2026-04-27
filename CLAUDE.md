@@ -117,14 +117,16 @@ gh run list --limit 5
 
 ---
 
-## Known issues (Phase 2 fix targets)
+## Known issues (open — Phase 3 targets)
 
 | Bug | Location | Symptom |
 |-----|----------|---------|
-| **Patch D shadow walker is no-op** | `kratos_clone/capture.py:78-101` | Manifest reports "D_shadow_walker" applied; actually captures zero shadow DOM because `cloneNode(true)` doesn't copy shadow roots. |
-| **Asset write race** | `kratos_clone/capture.py:319` | Late response handlers may be aborted mid-byte by `context.close()`. Truncated CSS/font files. |
-| **Generators NexusFlow-tuned** | `scripts/generate_design_system_v{1,2}.py` | `inv["buttons"][2]` fails on sites with different button order. |
-| **Iframe srcdoc unconditional win** | `kratos_clone/capture.py:490` | Cookie-banner srcdoc replaces real content if length > 1000 chars. |
+| **No global asset disk cap** (P1-E) | `kratos_clone/capture.py:_on_response` | Per-asset 8 MB cap exists; no count or cumulative bytes cap. Pathological site can write GBs. |
+| **`rewrite_html_assets` naive str.replace** (P1-F) | `kratos_clone/post.py:18` | Captured URL substring inside script/comment can be corrupted by replacement. |
+| **PII in browser logger** (P1-I) | `templates/index.html:362-364` | Full URL + query + userAgent shipped on every error → LGPD/GDPR concern if logs go to 3rd party. |
+
+> ✅ Phase 2 closed: P1-A (Patch D walker), P1-B (asset write race), P1-C (generator
+> indices), P1-D (same-origin), P1-G (iframe srcdoc). See `docs/AUDIT.md` for full audit.
 
 ---
 

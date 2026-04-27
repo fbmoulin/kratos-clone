@@ -143,21 +143,20 @@ Effort: M (50 lines).
 
 #### Patch D — Recursive shadow DOM + iframe serializer
 
-> **⚠️ KNOWN BROKEN — P1-A in `docs/AUDIT.md`.** The current implementation
-> (`kratos_clone/capture.py:78-101`) uses `cloneNode(true)` which by HTML spec does NOT
-> copy shadow roots. The walker visits a clone where every `shadowRoot` is `null`, so
-> Patch D captures zero shadow DOM content despite the manifest reporting it as
-> applied. Fix is to walk the **live** `document.documentElement` and serialize to a
-> string directly (port the SingleFile pattern). This caveat applies until the bug is
-> fixed in Phase 2 of `ROADMAP.md`.
+> ✅ **Fixed in Phase 2 (2026-04-27).** Earlier implementation used
+> `cloneNode(true)` which per HTML spec does NOT copy shadow roots. The walker
+> now operates on the **live** `document.documentElement` and serializes the tree
+> manually, emitting Declarative Shadow DOM (`<template shadowrootmode="open">`)
+> for each open shadow root. Closed shadow roots are inaccessible by spec — count
+> surfaced in `manifest.json` as `shadow_skipped_closed`.
 
-Goal: replace `await page.content()` with a custom serializer that walks shadow roots and same-origin iframes, emitting Declarative Shadow DOM (`<template shadowrootmode="open">`). Modern browsers re-render this identically.
+Replaces `await page.content()` with a custom serializer that walks shadow roots and
+same-origin iframes. Modern browsers re-render Declarative Shadow DOM identically.
 
-`mode: 'closed'` shadow roots are inaccessible by spec — we will track skipped count in the manifest after the Phase 2 fix.
+Cross-origin iframes (Spline, Calendly) cannot be serialized — capture URL +
+dimensions + a reference screenshot instead.
 
-Cross-origin iframes (Spline, Calendly) cannot be serialized — capture URL + dimensions + a reference screenshot instead.
-
-Effort: M (100 lines, mostly the walker).
+Effort: shipped (~100 lines walker in `kratos_clone/capture.py:81-157`).
 
 #### Patch E — Computed-style snapshot for design-system extraction
 

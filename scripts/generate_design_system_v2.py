@@ -500,15 +500,57 @@ comp_section, comp_inner = make_section(
     "Each variant uses the exact class signature pulled from the page. "
     "Hover/focus states behave as in the source — driven by the same Tailwind utilities.",
 )
+
+
+# P1-C fix: replace hardcoded inv["buttons"][N] indices (NexusFlow-only) with
+# semantic class-signature lookup so the generator works on any Tailwind site.
+def find_button_by_classes(buttons, *required, default_label: str = "Action"):
+    """First button whose `.classes` contains ALL `required` substrings.
+
+    Returns a {"classes", "label"} dict. Falls back to a stub when nothing
+    matches so the rendered showcase shows an empty state for that role
+    instead of crashing with IndexError.
+    """
+    for b in buttons:
+        cls = b.get("classes", "")
+        if all(s in cls for s in required):
+            return {"classes": cls, "label": b.get("label", "") or default_label}
+    return {"classes": "", "label": default_label}
+
+
+_b = inv["buttons"]
+_primary = find_button_by_classes(
+    _b, "gradient-to-r", "from-orange", default_label="Start for free"
+)
+_secondary = find_button_by_classes(
+    _b, "neutral-900/", "border-neutral-800", default_label="View demo"
+)
+_ghost = find_button_by_classes(_b, "white/5", "white/10", default_label="Get Started")
+_white_pill = find_button_by_classes(
+    _b, "bg-white", "text-black", default_label="Start Building"
+)
+_dark_pill = find_button_by_classes(
+    _b, "bg-[#11", "rounded-full", default_label="Explore"
+)
+_chip_active = find_button_by_classes(
+    _b, "bg-orange-500/10", "border-orange-500/30", default_label="All"
+)
+_chip_idle = find_button_by_classes(
+    _b, "bg-[#161616]", "rounded-full", default_label="Active"
+)
+
 BUTTON_ROLES = [
-    ("Primary CTA", inv["buttons"][2]["classes"], "Start for free"),
-    ("Secondary CTA", inv["buttons"][3]["classes"], "View demo"),
-    ("Ghost (nav)", inv["buttons"][0]["classes"], "Get Started"),
-    ("Pill — White solid", inv["buttons"][7]["classes"], "Start Building"),
-    ("Pill — Dark", inv["buttons"][6]["classes"], "Explore"),
-    ("Filter chip — active", inv["buttons"][4]["classes"], "All"),
-    ("Filter chip — idle", inv["buttons"][5]["classes"], "Active"),
+    ("Primary CTA", _primary["classes"], _primary["label"]),
+    ("Secondary CTA", _secondary["classes"], _secondary["label"]),
+    ("Ghost (nav)", _ghost["classes"], _ghost["label"]),
+    ("Pill — White solid", _white_pill["classes"], _white_pill["label"]),
+    ("Pill — Dark", _dark_pill["classes"], _dark_pill["label"]),
+    ("Filter chip — active", _chip_active["classes"], _chip_active["label"]),
+    ("Filter chip — idle", _chip_idle["classes"], _chip_idle["label"]),
 ]
+# Drop empty-classes rows so we don't render bald buttons for a role that
+# doesn't exist in the source.
+BUTTON_ROLES = [(role, cls, lbl) for (role, cls, lbl) in BUTTON_ROLES if cls]
 btn_h = new.new_tag(
     "h3",
     style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#737373;margin:0 0 16px;font-weight:400;",
