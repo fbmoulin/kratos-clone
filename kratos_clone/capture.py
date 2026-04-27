@@ -633,7 +633,7 @@ class HardenedCapture:
                     )
                     if len(f_html) > 1000 and len(f_html) >= main_html_len * 0.5:
                         self.log(
-                            f"🔍 Using same-origin iframe content "
+                            "🔍 Using same-origin iframe content "
                             f"({len(f_html) // 1024} KB, "
                             f"netloc={f_netloc or 'about:srcdoc'})"
                         )
