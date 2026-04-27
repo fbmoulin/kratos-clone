@@ -167,3 +167,73 @@ def test_rewrite_parametrized(captured, html_in, expected_in, expected_not_in):
     assert expected_in in out
     if expected_not_in is not None:
         assert expected_not_in not in out
+
+
+# ── P1-F regression: BS4-aware rewrite must NOT touch script bodies ─────────
+
+
+def test_p1f_script_body_url_not_rewritten():
+    """A captured asset URL appearing inside a <script> body (e.g., as a
+    JS string literal in an inline tracking pixel handler) must NOT be
+    rewritten — only attribute values are.
+
+    Pre-Phase-3 `str.replace` corrupted these. BS4 walks attributes only.
+    """
+    html = (
+        "<html><head></head><body>"
+        '<img src="https://x.com/a.png">'
+        '<script>const fallback = "https://x.com/a.png";</script>'
+        "</body></html>"
+    )
+    out = rewrite_html_assets(html, {"https://x.com/a.png": "assets/a.png"}, "x")
+    # Attribute IS rewritten
+    assert 'src="assets/a.png"' in out
+    # Script body is NOT (the JS string literal stays intact)
+    assert 'const fallback = "https://x.com/a.png"' in out
+
+
+def test_p1f_html_comment_not_rewritten():
+    """URL in an HTML comment must survive — comments are not URL-bearing."""
+    html = (
+        "<html><body>"
+        "<!-- example: https://x.com/a.png -->"
+        '<img src="https://x.com/a.png">'
+        "</body></html>"
+    )
+    out = rewrite_html_assets(html, {"https://x.com/a.png": "assets/a.png"}, "x")
+    assert 'src="assets/a.png"' in out
+    # Comment text preserved verbatim
+    assert "https://x.com/a.png -->" in out
+
+
+def test_srcset_rewritten():
+    """Multi-URL srcset attribute: each URL should be rewritten independently."""
+    html = '<img srcset="https://x.com/a.png 1x, https://x.com/b.png 2x">'
+    out = rewrite_html_assets(
+        html,
+        {
+            "https://x.com/a.png": "assets/a.png",
+            "https://x.com/b.png": "assets/b.png",
+        },
+        "x",
+    )
+    assert "assets/a.png" in out
+    assert "assets/b.png" in out
+    assert "https://x.com/a.png" not in out
+    assert "https://x.com/b.png" not in out
+
+
+def test_inline_style_url_rewritten():
+    """`style="background:url(...)"` inline attribute is BS4-aware."""
+    html = '<div style="background:url(https://x.com/bg.png) center"></div>'
+    out = rewrite_html_assets(html, {"https://x.com/bg.png": "assets/bg.png"}, "x")
+    assert "url(assets/bg.png)" in out
+    assert "https://x.com/bg.png" not in out
+
+
+def test_style_block_url_rewritten():
+    """`<style>` block url(...) refs rewritten."""
+    html = '<style>.hero{background:url("https://x.com/hero.jpg")}</style>'
+    out = rewrite_html_assets(html, {"https://x.com/hero.jpg": "assets/hero.jpg"}, "x")
+    assert 'url("assets/hero.jpg")' in out
+    assert "https://x.com/hero.jpg" not in out

@@ -117,16 +117,12 @@ gh run list --limit 5
 
 ---
 
-## Known issues (open — Phase 3 targets)
+## Known issues
 
-| Bug | Location | Symptom |
-|-----|----------|---------|
-| **No global asset disk cap** (P1-E) | `kratos_clone/capture.py:_on_response` | Per-asset 8 MB cap exists; no count or cumulative bytes cap. Pathological site can write GBs. |
-| **`rewrite_html_assets` naive str.replace** (P1-F) | `kratos_clone/post.py:18` | Captured URL substring inside script/comment can be corrupted by replacement. |
-| **PII in browser logger** (P1-I) | `templates/index.html:362-364` | Full URL + query + userAgent shipped on every error → LGPD/GDPR concern if logs go to 3rd party. |
-
-> ✅ Phase 2 closed: P1-A (Patch D walker), P1-B (asset write race), P1-C (generator
-> indices), P1-D (same-origin), P1-G (iframe srcdoc). See `docs/AUDIT.md` for full audit.
+> ✅ All 9 P1 audit findings closed. P0 was zero from the start.
+> Open: P2 items (12) + P3 (~13). See `docs/AUDIT.md` for the full list and
+> `ROADMAP.md` for phasing. Top P2 candidates next: type hints on `app.py`
+> (currently 0%), bandit + mypy in CI, Dependabot config.
 
 ---
 

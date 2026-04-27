@@ -50,7 +50,7 @@ jobs:
       - name: Install runtime deps
         run: |
           pip install --upgrade pip
-          pip install playwright beautifulsoup4 requests urllib3 flask gunicorn psutil structlog pytest
+          pip install playwright beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog pytest
 
       - name: Verify kratos_clone imports
         run: |
@@ -126,7 +126,30 @@ jobs:
       - name: Install runtime deps + pytest
         run: |
           pip install --upgrade pip
-          pip install pytest playwright beautifulsoup4 requests urllib3 flask gunicorn psutil structlog
+          pip install pytest playwright beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog
 
       - name: Run pytest
         run: pytest -v tests/
+
+  pip-audit:
+    name: pip-audit (CVE scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime deps + pip-audit
+        run: |
+          pip install --upgrade pip
+          pip install pip-audit
+          # Install runtime deps so pip-audit sees real installed versions
+          pip install playwright beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog
+
+      - name: Audit installed packages
+        # Strict mode reserved for Phase 6; soft gate now. Re-emits findings
+        # so they're visible in CI logs even when not failing the build.
+        run: pip-audit --vulnerability-service osv --desc on || true

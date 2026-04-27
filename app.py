@@ -1,6 +1,9 @@
 from flask import Flask, render_template, request, send_file, Response, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import logging
 import os
+import re
 import shutil
 import sys
 import uuid
@@ -48,6 +51,24 @@ app = Flask(__name__)
 # Hard 1 MiB body cap on every endpoint — backstop for the per-route check
 # in /api/client-errors which can be bypassed via Transfer-Encoding: chunked.
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+
+# Trust X-Forwarded-For only when explicitly enabled — security review caught
+# that without ProxyFix, every external client appears to share the proxy IP
+# (e.g. 127.0.0.1 behind nginx) and the rate limiter applies a single global
+# bucket. Set TRUST_PROXY=1 only when behind a known reverse proxy that strips
+# client-supplied X-Forwarded-For (otherwise spoofable).
+if os.getenv("TRUST_PROXY", "0").strip() == "1":
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+    logger.info("proxy_fix_enabled", x_for=1, x_proto=1)
+
+# P2-5: rate-limit /api/client-errors. Lazy: limiter is bound to a route via
+# `@limiter.limit(...)` at decoration time but its storage backend (which can
+# spawn a janitor thread for in-memory expiration) is initialized only inside
+# `create_app()`. This keeps `import app` side-effect-free (audit P2-7) — the
+# CI smoke job verifies threading.active_count() does not grow on import.
+limiter = Limiter(key_func=get_remote_address)
 
 DOWNLOAD_FOLDER = "downloads"
 
@@ -191,8 +212,9 @@ def cleanup_abandoned_sessions():
 
 def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True):
     """Initialize side-effecting parts of the app: ensure DOWNLOAD_FOLDER exists,
-    optionally clear stale downloads on boot, and optionally start the janitor
-    thread. Returns the module-level `app` for chaining.
+    bind the rate limiter, optionally clear stale downloads on boot, and
+    optionally start the janitor thread. Returns the module-level `app` for
+    chaining.
 
     Tests call `create_app(start_janitor=False, run_boot_cleanup=False)` to get
     a fresh, side-effect-free Flask instance. Production uses `wsgi.py` which
@@ -203,6 +225,13 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True):
     """
     if not os.path.exists(DOWNLOAD_FOLDER):
         os.makedirs(DOWNLOAD_FOLDER)
+    # Bind limiter storage now (memory:// would otherwise spawn an
+    # expiration thread at module-import time and trip the smoke test).
+    app.config.setdefault(
+        "RATELIMIT_STORAGE_URI",
+        os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"),
+    )
+    limiter.init_app(app)
     if run_boot_cleanup:
         cleanup_downloads_folder()
     if start_janitor:
@@ -435,19 +464,48 @@ _FRONTEND_MAX_ENTRIES_PER_REQUEST = 20
 _FRONTEND_MAX_BODY_BYTES = 32 * 1024  # 32 KB
 _FRONTEND_MAX_FIELD_LEN = 2000
 
+# P2-4: strip control chars (esp. ANSI escape sequences \x1b[) before passing to
+# console renderer — prevents a malicious entry from clearing or scrolling the
+# operator's terminal in dev mode (LOG_FORMAT=console).
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
 frontend_logger = structlog.get_logger("frontend")
 
 
 def _truncate(value, limit=_FRONTEND_MAX_FIELD_LEN):
     if value is None:
         return None
-    s = str(value)
+    s = _CONTROL_CHARS_RE.sub("?", str(value))
     return s if len(s) <= limit else s[:limit] + "…"
 
 
+def _strip_query(url):
+    """P1-I: drop query string + fragment from logged URLs.
+
+    Avoids capturing tokens, session IDs, PII parameters into structured logs
+    that may be exported to 3rd-party aggregators (LGPD/GDPR concern). Keeps
+    scheme + host + pathname only.
+    """
+    if not url:
+        return None
+    s = str(url)
+    for sep in ("?", "#"):
+        i = s.find(sep)
+        if i >= 0:
+            s = s[:i]
+    return s
+
+
 @app.route("/api/client-errors", methods=["POST"])
+@limiter.limit(os.getenv("CLIENT_ERRORS_RATE_LIMIT", "60 per minute"))
 def client_errors():
     """Ingest frontend error reports from the browser logger."""
+    # P2-3: refuse non-JSON content-types. `force=True` previously allowed
+    # `text/plain` which bypasses CORS preflight; we now require declared JSON.
+    ctype = (request.content_type or "").split(";", 1)[0].strip().lower()
+    if ctype and ctype != "application/json":
+        return jsonify({"error": "content-type must be application/json"}), 415
+
     # Per-route cap. Flask's app-wide MAX_CONTENT_LENGTH (1 MiB) is the backstop
     # for chunked-transfer-encoding requests where Content-Length is missing.
     # `cache=True` so request.get_json() can re-read after this size check.
@@ -460,7 +518,7 @@ def client_errors():
         return jsonify({"error": "payload too large"}), 413
 
     try:
-        body = request.get_json(force=True, silent=True)
+        body = request.get_json(silent=True)
     except Exception:
         return jsonify({"error": "invalid json"}), 400
 
@@ -486,7 +544,7 @@ def client_errors():
             entry.get("event", "client_event"),
             message=_truncate(entry.get("message")),
             stack=_truncate(entry.get("stack")),
-            url=_truncate(entry.get("url"), 500),
+            url=_truncate(_strip_query(entry.get("url")), 500),
             user_agent=_truncate(entry.get("userAgent"), 300),
             ts_client=entry.get("ts"),
             session_id=_truncate(entry.get("sessionId"), 64),

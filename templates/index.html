@@ -353,13 +353,30 @@
             }
         }
 
+        // Hard cap on queue size — protects against unbounded memory growth
+        // when flush() never runs (e.g., extension blocks setInterval) or when
+        // the page generates errors faster than they can be shipped (L3 audit).
+        var QUEUE_HARD_MAX = 200;
+
+        // P1-I client-side fix: strip query + fragment BEFORE the URL traverses
+        // the network. Server-side _strip_query also exists as defense-in-depth
+        // but does not close the transport-layer leak (proxy/gunicorn access logs
+        // see the raw URL on the way in). Adversarial review caught this gap.
+        var _safeUrl = function () {
+            try { return location.origin + location.pathname; }
+            catch (_) { return ''; }
+        };
+
         function enqueue(level, event, fields) {
             try {
+                if (queue.length >= QUEUE_HARD_MAX) {
+                    queue.shift(); // drop oldest, keep newest
+                }
                 queue.push(Object.assign({
                     level: level,
                     event: event,
                     ts: new Date().toISOString(),
-                    url: location.href,
+                    url: _safeUrl(),
                     userAgent: navigator.userAgent,
                     sessionId: sessionId,
                 }, fields || {}));
