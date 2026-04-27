@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from scripts.post_process import audit_assets, inline_small_assets, AssetAudit
+from scripts.post_process import AssetAudit, audit_assets, inline_small_assets
 
 
 def _png(size: tuple[int, int] = (16, 16), color: str = "blue") -> bytes:
@@ -67,9 +67,7 @@ class TestInlineSmallAssets:
         assert small_size < threshold < big_size
 
         out_html = capture_dir / "inlined.html"
-        n = inline_small_assets(
-            capture_dir / "index.html", out_html, max_bytes=threshold
-        )
+        n = inline_small_assets(capture_dir / "index.html", out_html, max_bytes=threshold)
         out = out_html.read_text()
         # At minimum, small.png is inlined and big.png is left as a file ref.
         assert n >= 1

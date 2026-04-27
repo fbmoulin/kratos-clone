@@ -7,8 +7,8 @@ the test inlines an identical copy to avoid importing the side-effecty scripts.
 """
 
 from __future__ import annotations
-import pytest
 
+import pytest
 
 # ── Inline copy of helper from scripts/generate_design_system_v{1,2}.py ─────
 
@@ -58,9 +58,7 @@ def test_finds_primary_cta_by_signature(nexusflow_buttons):
 
 
 def test_finds_secondary_by_neutral_signature(nexusflow_buttons):
-    result = find_button_by_classes(
-        nexusflow_buttons, "neutral-900/", "border-neutral-800"
-    )
+    result = find_button_by_classes(nexusflow_buttons, "neutral-900/", "border-neutral-800")
     assert "neutral-900/60" in result["classes"]
 
 
@@ -87,9 +85,7 @@ def test_returns_first_match_when_multiple(nexusflow_buttons):
 
 def test_empty_label_replaced_by_default(nexusflow_buttons):
     """Mobile menu (idx 1) has empty label → default fills in."""
-    result = find_button_by_classes(
-        nexusflow_buttons, "md:hidden", default_label="Menu"
-    )
+    result = find_button_by_classes(nexusflow_buttons, "md:hidden", default_label="Menu")
     assert result["label"] == "Menu"
 
 

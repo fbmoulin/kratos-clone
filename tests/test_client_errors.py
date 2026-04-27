@@ -7,8 +7,8 @@ level whitelist, oversized payload rejection).
 """
 
 from __future__ import annotations
-import pytest
 
+import pytest
 
 # ── Happy path ──────────────────────────────────────────────────────────────
 
@@ -57,9 +57,7 @@ def test_missing_entries_key_returns_204(client):
 
 def test_bad_json_returns_204(client):
     """Invalid JSON parses silently to None → 204 (RFC compliance)."""
-    resp = client.post(
-        "/api/client-errors", data="not json", content_type="application/json"
-    )
+    resp = client.post("/api/client-errors", data="not json", content_type="application/json")
     assert resp.status_code == 204
     assert resp.data == b""
 
@@ -147,9 +145,7 @@ def test_text_plain_rejected_415(client):
 
     Now must be application/json.
     """
-    resp = client.post(
-        "/api/client-errors", data='{"entries":[]}', content_type="text/plain"
-    )
+    resp = client.post("/api/client-errors", data='{"entries":[]}', content_type="text/plain")
     assert resp.status_code == 415
     assert resp.get_json()["error"] == "content-type must be application/json"
 
@@ -253,9 +249,7 @@ def test_body_under_per_route_cap_accepted(client):
 
 def test_body_over_per_route_cap_rejected_413(client):
     """50 KB body exceeds 32 KB per-route cap → 413."""
-    resp = client.post(
-        "/api/client-errors", data="x" * 50_000, content_type="application/json"
-    )
+    resp = client.post("/api/client-errors", data="x" * 50_000, content_type="application/json")
     assert resp.status_code == 413
 
 

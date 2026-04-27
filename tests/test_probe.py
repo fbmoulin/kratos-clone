@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from scripts.probe import ProbeResult, detect_framework, run_probe, summarize_csp
 
-from scripts.probe import detect_framework, summarize_csp, ProbeResult, run_probe
 
-
-def _mock_response(
-    *, status: int, headers: dict | None = None, text: str = ""
-) -> MagicMock:
+def _mock_response(*, status: int, headers: dict | None = None, text: str = "") -> MagicMock:
     resp = MagicMock()
     resp.status_code = status
     resp.headers = headers or {}

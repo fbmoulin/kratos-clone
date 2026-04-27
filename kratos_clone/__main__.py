@@ -12,24 +12,21 @@ Examples:
 """
 
 from __future__ import annotations
+
 import argparse
 import asyncio
 import sys
 from pathlib import Path
 
-from .capture import HardenedCapture, CaptureConfig
+from .capture import CaptureConfig, HardenedCapture
 
 
 def main():
     ap = argparse.ArgumentParser(prog="kratos_clone")
     ap.add_argument("url")
     ap.add_argument("--output-dir", default="./capture")
-    ap.add_argument(
-        "--headed", action="store_true", help="Run browser headed (for WebGL/Spline)"
-    )
-    ap.add_argument(
-        "--no-styles", action="store_true", help="Skip computed-style snapshot"
-    )
+    ap.add_argument("--headed", action="store_true", help="Run browser headed (for WebGL/Spline)")
+    ap.add_argument("--no-styles", action="store_true", help="Skip computed-style snapshot")
     ap.add_argument("--no-shadow", action="store_true", help="Skip shadow DOM walker")
     ap.add_argument(
         "--no-io-polyfill",
@@ -51,9 +48,7 @@ def main():
         scroll_passes=max(1, min(3, args.passes)),
     )
 
-    cap = HardenedCapture(
-        args.url, args.output_dir, cfg, log=lambda m: print(m, flush=True)
-    )
+    cap = HardenedCapture(args.url, args.output_dir, cfg, log=lambda m: print(m, flush=True))
     manifest = asyncio.run(cap.run())
     print()
     print("=" * 60)

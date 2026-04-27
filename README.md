@@ -36,7 +36,7 @@ uv run python -m kratos_clone https://nexusflow-saas.aura.build/ \
     --output-dir ./capture
 ```
 
-Knobs (all overridable via `KCD_*` env vars):
+Knobs (all overridable via `KCD_*` env vars — full reference below):
 ```bash
 --passes {1,2,3}            # scroll passes (default 3)
 --viewport WxH              # default 1920x1080
@@ -47,6 +47,43 @@ Knobs (all overridable via `KCD_*` env vars):
 ```
 
 Output: `<dir>/index.html`, `<dir>/styles.json`, `<dir>/manifest.json`, `<dir>/assets/*`.
+
+#### Environment variables
+
+Capture-time tunables (`kratos_clone/capture.py`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KCD_VIEWPORT_WIDTH` | `1920` | Browser viewport width (px) |
+| `KCD_VIEWPORT_HEIGHT` | `1080` | Browser viewport height (px) |
+| `KCD_USER_AGENT` | Chrome 120 | UA string sent on requests |
+| `KCD_NAV_TIMEOUT` | `90000` | `page.goto` timeout (ms) |
+| `KCD_DOM_STABLE_MS` | `1500` | Mutation-quiet window before capture (ms) |
+| `KCD_NETIDLE_BUFFER` | `5000` | Networkidle settle (ms) |
+| `KCD_SCROLL_PASSES` | `3` | Three-pass scroll: forward fast / forward slow / backward slow |
+| `KCD_MAX_SCROLL_S` | `120` | Wall-clock budget for scroll loop (Phase 3, P2-2) |
+| `KCD_MAX_TOTAL_MB` | `200` | Hard cap on total asset bytes (Phase 3, P1-E) |
+| `KCD_MAX_ASSETS` | `500` | Hard cap on number of assets (Phase 3, P1-E) |
+| `KCD_HEADED` | `0` | `1` to launch a visible browser |
+| `KCD_CAPTURE_COMPUTED_STYLES` | `1` | Patch E — emit `styles.json` |
+| `KCD_IO_POLYFILL` | `1` | Patch A — IntersectionObserver pre-fire |
+| `KCD_SHADOW_WALKER` | `1` | Patch D — Declarative Shadow DOM serializer |
+| `KCD_BLOCK_ANALYTICS` | `0` | Drop common analytics URLs at the route layer |
+| `KCD_IFRAME_MIN_RATIO` | `0.5` | Length ratio for iframe srcdoc inclusion (Phase 2) |
+| `KCD_NO_IFRAME_SRCDOC` | `0` | `1` to skip iframe srcdoc capture |
+
+Server-side (`app.py`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | structlog level |
+| `LOG_FORMAT` | `console` | `json` for production-ready structured output |
+| `TRUST_PROXY` | `0` | `1` enables `ProxyFix(x_for=1, x_proto=1)` for `X-Forwarded-*` |
+| `RATE_LIMIT_STORAGE_URI` | `memory://` | Flask-Limiter backend (`redis://...` for prod) |
+| `CLIENT_ERRORS_RATE_LIMIT` | `60 per minute` | Per-IP cap on `/api/client-errors` |
+| `PERSONALIZE_STRUCTURE_RATE_LIMIT` | `5 per minute` | Per-IP cap on `/api/personalize/structure` |
+| `PERSONALIZE_RUN_RATE_LIMIT` | `2 per minute` | Per-IP cap on `/api/personalize/run` |
+| `OPENAI_API_KEY` | (required for personalize) | Loaded via `python-dotenv` from `.env` |
 
 ### Generate a design system from a capture
 ```bash

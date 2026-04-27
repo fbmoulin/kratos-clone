@@ -61,9 +61,7 @@ def verify_image_bytes(data: bytes) -> str:
         return "png"
     if data.startswith(JPEG_MAGIC):
         return "jpeg"
-    raise ValueError(
-        f"unsupported image type (PNG/JPEG only); leading bytes={data[:8]!r}"
-    )
+    raise ValueError(f"unsupported image type (PNG/JPEG only); leading bytes={data[:8]!r}")
 
 
 def strip_exif(data: bytes) -> bytes:
@@ -100,8 +98,6 @@ def strip_dangerous_html(html: str) -> str:
                 del tag.attrs[attr]
         for url_attr in _URL_ATTRS:
             value = tag.attrs.get(url_attr)
-            if isinstance(value, str) and value.strip().lower().startswith(
-                "javascript:"
-            ):
+            if isinstance(value, str) and value.strip().lower().startswith("javascript:"):
                 tag.attrs[url_attr] = "#"
     return str(soup)

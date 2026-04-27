@@ -104,9 +104,7 @@ def _judge_category(cat: str, inv: dict[str, Any]) -> tuple[str, str]:
         return ("full" if n >= 2 else "partial" if n else "missing"), f"{n} curves"
     if cat == "number":
         n = len(inv.get("z_indexes", [])) + len(inv.get("opacities", []))
-        return (
-            "full" if n >= 2 else "partial" if n else "missing"
-        ), f"{n} numeric tokens"
+        return ("full" if n >= 2 else "partial" if n else "missing"), f"{n} numeric tokens"
     if cat == "typography":
         headings = inv.get("headings", {})
         levels = sum(1 for k in ("h1", "h2", "h3", "h4") if headings.get(k))
@@ -218,9 +216,7 @@ _INLINE_COLOR_RE = re.compile(r"color\s*:\s*(#[0-9a-fA-F]{3,6})", re.I)
 _INLINE_BG_RE = re.compile(r"background(?:-color)?\s*:\s*(#[0-9a-fA-F]{3,6})", re.I)
 
 
-def check_wcag_contrast(
-    capture_dir: Path, *, min_ratio: float = 4.5
-) -> list[dict[str, Any]]:
+def check_wcag_contrast(capture_dir: Path, *, min_ratio: float = 4.5) -> list[dict[str, Any]]:
     """Return inline-styled text elements failing AA contrast (default 4.5:1).
 
     Only inspects elements that declare BOTH ``color:`` AND ``background:``
@@ -281,9 +277,7 @@ def run_validate(capture_dir: Path) -> ValidationReport:
     capture_dir = Path(capture_dir)
     inventory_path = capture_dir / "_inventory.json"
     inventory: dict[str, Any] = (
-        json.loads(inventory_path.read_text(encoding="utf-8"))
-        if inventory_path.exists()
-        else {}
+        json.loads(inventory_path.read_text(encoding="utf-8")) if inventory_path.exists() else {}
     )
     coverage = coverage_scorecard(inventory)
     missing = check_asset_refs(capture_dir)

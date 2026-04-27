@@ -9,10 +9,12 @@ Pipeline:
 """
 
 from __future__ import annotations
+
 import json
 import re
 from copy import deepcopy
 from pathlib import Path
+
 from bs4 import BeautifulSoup, Tag
 
 ROOT = Path(__file__).parent
@@ -20,9 +22,7 @@ SRC = ROOT / "index.html"
 OUT = ROOT / "design-system.html"
 
 soup = BeautifulSoup(SRC.read_text(encoding="utf-8"), "html.parser")
-new = BeautifulSoup(
-    "<!doctype html><html><head></head><body></body></html>", "html.parser"
-)
+new = BeautifulSoup("<!doctype html><html><head></head><body></body></html>", "html.parser")
 new_html = new.html
 new_head = new.head
 new_body = new.body
@@ -427,9 +427,7 @@ _dark_pill = find_button_by_classes(
 _chip_active = find_button_by_classes(
     _b, "bg-orange-500/10", "border-orange-500/30", default_label="All"
 )
-_chip_idle = find_button_by_classes(
-    _b, "bg-[#161616]", "rounded-full", default_label="Active"
-)
+_chip_idle = find_button_by_classes(_b, "bg-[#161616]", "rounded-full", default_label="Active")
 
 BUTTON_ROLES = [
     ("Primary CTA", _primary["classes"], _primary["label"]),
@@ -451,9 +449,7 @@ for role, cls, label in BUTTON_ROLES:
     grid = new.new_tag("div", **{"class": "ds-state-grid"})
     role_node = new.new_tag("span", **{"class": "ds-state-label"})
     role_node.string = role
-    btn_wrap = new.new_tag(
-        "div", style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;"
-    )
+    btn_wrap = new.new_tag("div", style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;")
     btn = new.new_tag("button", **{"class": cls})
     btn.string = label
     btn_wrap.append(btn)
@@ -609,12 +605,8 @@ pat_c = BeautifulSoup(
             '<iconify-icon icon="lucide:'
             + ic
             + '" class="text-orange-500" style="font-size:24px;"></iconify-icon>'
-            '<h4 class="text-base font-normal text-white tracking-tight mt-3">'
-            + t
-            + "</h4>"
-            '<p class="text-sm text-neutral-500 leading-relaxed font-light mt-1">'
-            + d
-            + "</p>"
+            '<h4 class="text-base font-normal text-white tracking-tight mt-3">' + t + "</h4>"
+            '<p class="text-sm text-neutral-500 leading-relaxed font-light mt-1">' + d + "</p>"
             "</div>"
             for ic, t, d in [
                 ("box", "Modular nodes", "Drag, drop, connect."),
@@ -683,9 +675,7 @@ MOTION_DEMOS = [
         "animate-infinite-scroll",
         "Infinite scroll · logo strip",
         '<div style="overflow:hidden;width:100%;"><div class="animate-infinite-scroll" style="display:flex;gap:32px;color:#525252;font-size:14px;letter-spacing:.1em;">'
-        + " · ".join(
-            ["ACME", "VERTEX", "ATLAS", "NORTH", "PRISM", "HALO", "ECHO", "VELA"] * 3
-        )
+        + " · ".join(["ACME", "VERTEX", "ATLAS", "NORTH", "PRISM", "HALO", "ECHO", "VELA"] * 3)
         + "</div></div>",
     ),
     (
@@ -746,9 +736,7 @@ icons_inner.append(
 )
 
 # Sizes row
-sizes_grid = new.new_tag(
-    "div", **{"class": "ds-grid cols-4"}, style="margin-bottom:32px;"
-)
+sizes_grid = new.new_tag("div", **{"class": "ds-grid cols-4"}, style="margin-bottom:32px;")
 for sz, lbl in [
     (14, "sm · 14"),
     (18, "md · 18 (default)"),
@@ -775,9 +763,7 @@ colors_h = new.new_tag(
 )
 colors_h.string = "Color inheritance"
 icons_inner.append(colors_h)
-color_row = new.new_tag(
-    "div", **{"class": "ds-grid cols-4"}, style="margin-bottom:32px;"
-)
+color_row = new.new_tag("div", **{"class": "ds-grid cols-4"}, style="margin-bottom:32px;")
 for cls, lbl in [
     ("text-white", "white · primary"),
     ("text-neutral-400", "neutral-400 · meta"),
@@ -807,11 +793,7 @@ icons_inner.append(all_h)
 all_grid = new.new_tag("div", **{"class": "ds-grid cols-6"})
 for icon_name in inv["icons"]:
     cell = new.new_tag("div", **{"class": "ds-icon-cell"})
-    cell.append(
-        BeautifulSoup(
-            f'<iconify-icon icon="{icon_name}"></iconify-icon>', "html.parser"
-        )
-    )
+    cell.append(BeautifulSoup(f'<iconify-icon icon="{icon_name}"></iconify-icon>', "html.parser"))
     short = icon_name.split(":", 1)[-1]
     name = new.new_tag("span", **{"class": "name"})
     name.string = short

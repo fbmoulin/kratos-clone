@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import re
+from collections.abc import Mapping
 from copy import copy
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,7 @@ _PREFIX_GROUP = "|".join(_TAILWIND_PREFIXES)
 def apply_personalization(
     html_path: Path,
     plan: dict[str, Any],
-    images: dict[str, bytes],
+    images: Mapping[str, bytes | str],
     slots: list[dict[str, Any]],
     out_path: Path,
 ) -> None:
@@ -152,7 +153,7 @@ def _apply_palette(soup: BeautifulSoup, palette: dict[str, str]) -> BeautifulSou
 
 def _apply_image_patches(
     soup: BeautifulSoup,
-    images: dict[str, bytes],
+    images: Mapping[str, bytes | str],
     slot_map: dict[str, dict[str, Any]],
     out_dir: Path,
 ) -> None:
@@ -165,10 +166,11 @@ def _apply_image_patches(
         if slot is None:
             log.warning("unknown_image_slot", slot_id=slot_id)
             continue
-        if isinstance(payload, str):
-            payload = base64.b64decode(payload)
+        # Accept either raw bytes (from gpt-image-1 result) or a base64 string
+        # (from older callers / serialized plans).
+        raw: bytes = base64.b64decode(payload) if isinstance(payload, str) else payload
         fname = f"gen_{slot_id.replace('.', '_')}.png"
-        (assets_dir / fname).write_bytes(payload)
+        (assets_dir / fname).write_bytes(raw)
         target = soup.select_one(slot["selector"])
         if target is None:
             log.info("image_selector_no_match", slot_id=slot_id)

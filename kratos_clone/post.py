@@ -15,8 +15,10 @@ Script bodies, HTML comments, and arbitrary text nodes are NEVER touched.
 """
 
 from __future__ import annotations
+
 import re
 from urllib.parse import quote
+
 from bs4 import BeautifulSoup, Tag
 
 # Attributes that commonly carry a URL value (single URL).
@@ -119,9 +121,7 @@ def _rewrite_css_url_funcs(css: str, url_map: dict[str, str]) -> str:
     return _URL_FUNC_RE.sub(_sub, css)
 
 
-def rewrite_html_assets(
-    html: str, captured_assets: dict[str, str], base_url: str
-) -> str:
+def rewrite_html_assets(html: str, captured_assets: dict[str, str], base_url: str) -> str:
     """Surgical, attribute-aware URL rewriting + orphan CSS injection.
 
     Audit P1-F: previous `str.replace`-based approach corrupted URL substrings
@@ -170,9 +170,7 @@ def rewrite_html_assets(
     if orphans:
         link_tags = "\n".join(f'<link rel="stylesheet" href="{c}">' for c in orphans)
         if "</head>" in serialized_after:
-            serialized_after = serialized_after.replace(
-                "</head>", f"{link_tags}\n</head>", 1
-            )
+            serialized_after = serialized_after.replace("</head>", f"{link_tags}\n</head>", 1)
         elif "<body" in serialized_after:
             serialized_after = re.sub(
                 r"(<body[^>]*>)", rf"\1\n{link_tags}", serialized_after, count=1

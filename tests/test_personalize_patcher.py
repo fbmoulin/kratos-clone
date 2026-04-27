@@ -175,9 +175,7 @@ def test_unicode_preserved(workspace):
 def test_dangerous_html_in_value_neutralized(workspace):
     out = workspace / "personalized.html"
     plan = _full_plan()
-    plan["patches"] = [
-        {"slot_id": "hero.badge", "value": "<script>alert(1)</script>safe"}
-    ]
+    plan["patches"] = [{"slot_id": "hero.badge", "value": "<script>alert(1)</script>safe"}]
     plan["images"] = []
     apply_personalization(workspace / "index.html", plan, {}, SLOTS, out)
     html = out.read_text()

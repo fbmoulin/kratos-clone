@@ -16,6 +16,7 @@ Sources:
 """
 
 from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
@@ -23,11 +24,11 @@ import os
 import re
 import time
 import urllib.parse
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional, Callable
-from playwright.async_api import async_playwright, Page, Route
 
+from playwright.async_api import Page, Route, async_playwright
 
 # ── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_VIEWPORT = (1920, 1080)
@@ -183,32 +184,20 @@ class CaptureConfig:
     viewport_height: int = field(
         default_factory=lambda: int(os.getenv("KCD_VIEWPORT_HEIGHT", "1080"))
     )
-    user_agent: str = field(
-        default_factory=lambda: os.getenv("KCD_USER_AGENT", DEFAULT_USER_AGENT)
-    )
-    nav_timeout_ms: int = field(
-        default_factory=lambda: int(os.getenv("KCD_NAV_TIMEOUT", "90000"))
-    )
-    dom_stable_ms: int = field(
-        default_factory=lambda: int(os.getenv("KCD_DOM_STABLE_MS", "1500"))
-    )
+    user_agent: str = field(default_factory=lambda: os.getenv("KCD_USER_AGENT", DEFAULT_USER_AGENT))
+    nav_timeout_ms: int = field(default_factory=lambda: int(os.getenv("KCD_NAV_TIMEOUT", "90000")))
+    dom_stable_ms: int = field(default_factory=lambda: int(os.getenv("KCD_DOM_STABLE_MS", "1500")))
     network_idle_buffer_ms: int = field(
         default_factory=lambda: int(os.getenv("KCD_NETIDLE_BUFFER", "5000"))
     )
-    scroll_passes: int = field(
-        default_factory=lambda: int(os.getenv("KCD_SCROLL_PASSES", "3"))
-    )
+    scroll_passes: int = field(default_factory=lambda: int(os.getenv("KCD_SCROLL_PASSES", "3")))
     scroll_settle_ms_fast: int = 400
     scroll_settle_ms_slow: int = 900
     scroll_jump_ratio_fast: float = 0.8
     scroll_jump_ratio_slow: float = 0.6
-    headed: bool = field(
-        default_factory=lambda: os.getenv("KCD_HEADED", "false").lower() == "true"
-    )
+    headed: bool = field(default_factory=lambda: os.getenv("KCD_HEADED", "false").lower() == "true")
     capture_computed_styles: bool = field(
-        default_factory=lambda: (
-            os.getenv("KCD_CAPTURE_COMPUTED_STYLES", "true").lower() == "true"
-        )
+        default_factory=lambda: os.getenv("KCD_CAPTURE_COMPUTED_STYLES", "true").lower() == "true"
     )
     use_io_polyfill: bool = field(
         default_factory=lambda: os.getenv("KCD_IO_POLYFILL", "true").lower() == "true"
@@ -218,9 +207,7 @@ class CaptureConfig:
     )
     disable_lenis: bool = True
     block_analytics: bool = field(
-        default_factory=lambda: (
-            os.getenv("KCD_BLOCK_ANALYTICS", "true").lower() == "true"
-        )
+        default_factory=lambda: os.getenv("KCD_BLOCK_ANALYTICS", "true").lower() == "true"
     )
     # P2-2: wall-clock budget for the 3-pass scroll loop. A pathological page
     # with infinite-scroll growing scrollHeight every pass could otherwise run
@@ -235,14 +222,14 @@ class CaptureConfig:
     max_total_asset_mb: int = field(
         default_factory=lambda: int(os.getenv("KCD_MAX_TOTAL_MB", "200"))
     )
-    max_assets: int = field(
-        default_factory=lambda: int(os.getenv("KCD_MAX_ASSETS", "500"))
-    )
+    max_assets: int = field(default_factory=lambda: int(os.getenv("KCD_MAX_ASSETS", "500")))
 
 
 # ── Asset hashing & filename helpers ─────────────────────────────────────────
 def hash_url(url: str) -> str:
-    return hashlib.md5(url.encode()).hexdigest()[:12]
+    # MD5 used purely as a fast content-addressable filename hash (not security).
+    # ``usedforsecurity=False`` documents that intent and silences bandit B324.
+    return hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()[:12]
 
 
 def asset_filename(url: str) -> str:
@@ -259,7 +246,7 @@ def asset_filename(url: str) -> str:
 
 
 # ── Logger callback type ─────────────────────────────────────────────────────
-LogCallback = Optional[Callable[[str], None]]
+LogCallback = Callable[[str], None] | None
 
 
 # ── Main capture ─────────────────────────────────────────────────────────────
@@ -346,14 +333,10 @@ class HardenedCapture:
             try:
                 self.log(f"🌐 Loading {self.url}...")
                 # Patch B — networkidle is the right choice here, NOT domcontentloaded
-                await page.goto(
-                    self.url, wait_until="networkidle", timeout=self.cfg.nav_timeout_ms
-                )
+                await page.goto(self.url, wait_until="networkidle", timeout=self.cfg.nav_timeout_ms)
                 self.log("✓ Page loaded (networkidle)")
             except Exception as e:
-                self.log(
-                    f"⚠️  networkidle timeout, falling back to domcontentloaded: {e}"
-                )
+                self.log(f"⚠️  networkidle timeout, falling back to domcontentloaded: {e}")
                 try:
                     await page.goto(
                         self.url,
@@ -366,9 +349,7 @@ class HardenedCapture:
 
             # Patch B — DOM-stable predicate
             try:
-                self.log(
-                    f"⏳ Waiting for DOM to stabilize ({self.cfg.dom_stable_ms} ms)..."
-                )
+                self.log(f"⏳ Waiting for DOM to stabilize ({self.cfg.dom_stable_ms} ms)...")
                 await page.wait_for_function(
                     DOM_STABLE_FUNC, arg=self.cfg.dom_stable_ms, timeout=30000
                 )
@@ -414,15 +395,13 @@ class HardenedCapture:
             # every tracked task; the timeout caps total wait at 10s in case a
             # response body() never resolves.
             if self._pending_writes:
-                self.log(
-                    f"⏳ Awaiting {len(self._pending_writes)} pending asset write(s)..."
-                )
+                self.log(f"⏳ Awaiting {len(self._pending_writes)} pending asset write(s)...")
                 try:
                     await asyncio.wait_for(
                         asyncio.gather(*self._pending_writes, return_exceptions=True),
                         timeout=10.0,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     leaked = len(self._pending_writes)
                     self.log(f"⚠️  {leaked} asset write(s) did not finish in 10s")
                     self.errors.append(f"asset_write_timeout: {leaked} pending")
@@ -569,9 +548,7 @@ class HardenedCapture:
                     return
                 self.captured_assets[url] = f"assets/{fname}"
                 self._total_asset_bytes += len(body)
-                self.network_resources.append(
-                    {"url": url, "size": len(body), "ctype": ctype}
-                )
+                self.network_resources.append({"url": url, "size": len(body), "ctype": ctype})
             except Exception:
                 pass  # body() can fail for some responses; skip
         except Exception as e:
@@ -601,9 +578,7 @@ class HardenedCapture:
                 if over_budget():
                     self.scroll_budget_exceeded = True
                     break
-                await page.evaluate(
-                    f"window.scrollTo({{top: {y}, behavior: 'instant'}})"
-                )
+                await page.evaluate(f"window.scrollTo({{top: {y}, behavior: 'instant'}})")
                 await page.wait_for_timeout(self.cfg.scroll_settle_ms_fast)
 
         # Pass 2: forward slow (settle observers)
@@ -614,9 +589,7 @@ class HardenedCapture:
                 if over_budget():
                     self.scroll_budget_exceeded = True
                     break
-                await page.evaluate(
-                    f"window.scrollTo({{top: {y}, behavior: 'instant'}})"
-                )
+                await page.evaluate(f"window.scrollTo({{top: {y}, behavior: 'instant'}})")
                 await page.wait_for_timeout(self.cfg.scroll_settle_ms_slow)
 
         # Pass 3: backward slow (parallax/sticky)
@@ -627,9 +600,7 @@ class HardenedCapture:
                 if over_budget():
                     self.scroll_budget_exceeded = True
                     break
-                await page.evaluate(
-                    f"window.scrollTo({{top: {max(0, y)}, behavior: 'instant'}})"
-                )
+                await page.evaluate(f"window.scrollTo({{top: {max(0, y)}, behavior: 'instant'}})")
                 await page.wait_for_timeout(self.cfg.scroll_settle_ms_slow)
 
         # Return to top
@@ -660,9 +631,7 @@ class HardenedCapture:
         Uses Patch D shadow DOM walker if enabled.
         """
         # Capture main doc first so we can compare lengths
-        main_html = (
-            await page.evaluate("() => document.documentElement.outerHTML") or ""
-        )
+        main_html = await page.evaluate("() => document.documentElement.outerHTML") or ""
         main_html_len = len(main_html)
 
         if os.getenv("KCD_NO_IFRAME_SRCDOC", "false").lower() == "true":
@@ -712,9 +681,7 @@ class HardenedCapture:
                 same_origin = bool(f_netloc) and f_netloc == page_netloc
                 is_srcdoc = f_url.startswith("about:srcdoc")
                 if same_origin or is_srcdoc:
-                    f_html = await f.evaluate(
-                        "() => document.documentElement.outerHTML"
-                    )
+                    f_html = await f.evaluate("() => document.documentElement.outerHTML")
                     if len(f_html) > 1000 and len(f_html) >= main_html_len * 0.5:
                         self.log(
                             "🔍 Using same-origin iframe content "
@@ -731,9 +698,7 @@ class HardenedCapture:
                 "() => window.__kratos_serialize_with_shadow(document.documentElement)"
             )
             html = result["html"]
-            self.shadow_skipped_closed = int(
-                result.get("skipped_closed_shadow_roots", 0)
-            )
+            self.shadow_skipped_closed = int(result.get("skipped_closed_shadow_roots", 0))
             self.log(
                 f"📄 Captured main doc with shadow walker ({len(html) // 1024} KB"
                 + (

@@ -29,15 +29,21 @@ see `docs/AUDIT.md`.
 
 ---
 
-## 🟢 Later (Phase 6 — polish)
+## 🟢 Later
 
-See `ROADMAP.md` for full breakdown. Phase 4 (personalization MVP) and
-Phase 5 (pipeline completion + P2-8 closure) shipped 2026-04-27.
+Phases 4–6 shipped 2026-04-27. Open work tracked as: 7 P2 items + ~13 P3 in
+`docs/AUDIT.md`. Notable next-step candidates:
+- Tighten mypy from soft to hard gate after typing `app.py` + `kratos_clone/`
+- Bump bandit gate to MEDIUM
+- Address Gemini-flagged MEDIUMs from PR #7 (palette regex, asyncio.run-in-sync)
+- Enrich `scripts/inventory.py` with font_families/durations/shadows extractors
+  (raises Phase 5 coverage scorecard from ~30-50 → genuine high-coverage number)
 
 ---
 
 ## Done ✅
 
+- [x] **2026-04-27** — **Phase 6 complete**: DevEx + observability polish. Dependabot weekly grouped pip + github-actions. ruff `[tool.ruff]` config (E/F/W/I/UP/B/C4/SIM rules) + mypy `[tool.mypy]` strict-on-personalize. New CI jobs: `mypy` (soft gate) + `bandit` (HARD gate on HIGH severity, currently 0 after annotating B324 MD5 with `usedforsecurity=False` and B201 debug=True with `# nosec` since it's `__main__`-only). New `X-Request-ID` middleware on `app.py` propagates UUID4 to structlog contextvars + response header (5 tests). Full `KCD_*` env-var reference table in `README.md`. +5 tests (178 → 183 passing). +21 files reformatted via auto-fix.
 - [x] **2026-04-27** — **Phase 5 complete**: Pipeline completion. Three new pipeline-stage scripts (`scripts/probe.py` Stage 1 site recon, `scripts/post_process.py` Stage 3 asset audit + inline, `scripts/validate.py` Stage 6 quality gate with 4 checks: data-driven DTCG scorecard, asset-ref resolution, placeholder grep, WCAG contrast). Hardcoded `DTCG_CATEGORIES` literal removed from `generate_design_system_v2.py` — score is now genuine per-site. **Closes audit P2-8** (tautological scorecard). +39 tests (139 → 178 passing). Visual-diff via Playwright deferred to follow-on (keeps validation gate headless/CI-friendly).
 - [x] **2026-04-27** — **Phase 4 complete**: Personalization MVP. New `personalize/` package (slots, sanitize, openai_client, patcher, pipeline, cli) + 3 Flask routes (`/personalize`, `/api/personalize/structure`, `/api/personalize/run`) + intake form template. Hard budget cap (default \$1.00) on `OpenAIBrandClient`; closed-enum strict JSON schema for patches+images (zero slot-id hallucination). Live-validated against gpt-5-mini Responses API (~\$0.105 spent during E2E test). Closes audit **P2-11** (LLM input/output hardening: control-char strip, magic-byte allow-list PNG/JPEG, EXIF strip, dangerous-HTML strip). +66 tests (74 → 139, +2 live gated). 8 PR commits.
 - [x] **2026-04-27** — **Phase 3 complete**: production hardening — gunicorn 21.2→22.0 (CVE-2024-1135), content-type strict (force=True dropped → 415 on non-JSON), URL query/fragment stripped before logging (P1-I), ANSI/control-char sanitization in `_truncate` (P2-4), browser logger queue cap (200, drops oldest), three-pass scroll wall-clock budget (`KCD_MAX_SCROLL_S=120`, manifest flag), global asset disk caps (`KCD_MAX_TOTAL_MB=200`, `KCD_MAX_ASSETS=500`, drop counter), BS4-aware `rewrite_html_assets` (only URL-bearing attrs + style url() — script bodies preserved), Flask-Limiter on `/api/client-errors` (`60 per minute` per IP, configurable via `CLIENT_ERRORS_RATE_LIMIT` + `RATE_LIMIT_STORAGE_URI`), pip-audit job in CI (osv vuln service, soft gate). Tests 62 → 74 passing (+12). All 9 P1 audit items now closed.

@@ -116,7 +116,10 @@ class OpenAIBrandClient:
         user_input = json.dumps({"brief": clean})
 
         log.info("structure_brief_call", brief_len=len(clean))
-        resp = self._client.responses.create(
+        # The openai SDK's responses.create has overloaded literal-only typing
+        # for `model` and `input`. Our generic-string + dict-list usage is
+        # supported at runtime but doesn't match the literal overload.
+        resp = self._client.responses.create(  # type: ignore[call-overload]
             model=self._text_model,
             input=[
                 {"role": "system", "content": system},
@@ -125,7 +128,8 @@ class OpenAIBrandClient:
             text={"format": {"type": "json_schema", **_BRIEF_SCHEMA}},
         )
         self._record_spend(COST_STRUCTURE_BRIEF)
-        return json.loads(resp.output_text)
+        parsed: dict[str, Any] = json.loads(resp.output_text)
+        return parsed
 
     # ----- Step 5: personalize --------------------------------------------
 
@@ -179,7 +183,7 @@ class OpenAIBrandClient:
             image_slots=len(image_slots),
             logo_bytes=len(clean_logo),
         )
-        resp = self._client.responses.create(
+        resp = self._client.responses.create(  # type: ignore[call-overload]
             model=self._text_model,
             input=[
                 {"role": "system", "content": system},
@@ -197,7 +201,8 @@ class OpenAIBrandClient:
             text={"format": {"type": "json_schema", **schema}},
         )
         self._record_spend(COST_PERSONALIZE)
-        return json.loads(resp.output_text)
+        plan: dict[str, Any] = json.loads(resp.output_text)
+        return plan
 
     @staticmethod
     def _build_personalize_schema(
@@ -350,11 +355,10 @@ class OpenAIBrandClient:
             "quality": "medium",
         }
         if style_reference_b64 is not None:
-            kwargs["input_images"] = [
-                {"image": f"data:image/png;base64,{style_reference_b64}"}
-            ]
+            kwargs["input_images"] = [{"image": f"data:image/png;base64,{style_reference_b64}"}]
         resp = await async_client.images.generate(**kwargs)
-        return resp.data[0].b64_json
+        b64: str = resp.data[0].b64_json
+        return b64
 
     def _get_async_client(self) -> Any:
         if self._async_client is None:
