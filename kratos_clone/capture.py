@@ -27,8 +27,9 @@ import urllib.parse
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
-from playwright.async_api import Page, Route, async_playwright
+from playwright.async_api import Page, Response, Route, async_playwright
 
 # ── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_VIEWPORT = (1920, 1080)
@@ -318,10 +319,10 @@ class HardenedCapture:
         self.cfg = cfg or CaptureConfig()
         self._log = log or (lambda m: None)
         self.captured_assets: dict[str, str] = {}  # url → relative filename
-        self.network_resources: list[dict] = []
+        self.network_resources: list[dict[str, Any]] = []
         self.errors: list[str] = []
         self.shadow_skipped_closed: int = 0  # Patch D walker stat
-        self._pending_writes: set[asyncio.Task] = set()  # P1-B asset write tracking
+        self._pending_writes: set[asyncio.Task[None]] = set()  # P1-B asset write tracking
         # P1-E: cumulative tracking for disk caps
         self._total_asset_bytes: int = 0
         self._asset_count_dropped: int = 0  # how many assets we refused due to caps
@@ -336,7 +337,7 @@ class HardenedCapture:
     def log(self, msg: str) -> None:
         self._log(msg)
 
-    async def run(self) -> dict:
+    async def run(self) -> dict[str, Any]:
         """
         Orchestrates a hardened Playwright capture for the configured URL and returns a manifest describing the capture.
 
@@ -394,7 +395,7 @@ class HardenedCapture:
 
             # Network capture — wrap async handler in a tracked task so we can
             # await all pending writes before context.close() (P1-B fix).
-            def _on_response_tracked(response):
+            def _on_response_tracked(response: Response) -> None:
                 task = asyncio.create_task(self._on_response(response))
                 self._pending_writes.add(task)
                 task.add_done_callback(self._pending_writes.discard)
@@ -494,7 +495,18 @@ class HardenedCapture:
                 encoding="utf-8",
             )
 
-        manifest = {
+        patches: list[str] = [
+            p
+            for p in (
+                "A_io_prefire" if self.cfg.use_io_polyfill else None,
+                "B_dom_stable",
+                "C_three_pass_scroll",
+                "D_shadow_walker" if self.cfg.use_shadow_walker else None,
+                "E_computed_styles" if self.cfg.capture_computed_styles else None,
+            )
+            if p is not None
+        ]
+        manifest: dict[str, Any] = {
             "url": self.url,
             "captured_at": int(time.time()),
             "duration_s": round(time.time() - t_start, 2),
@@ -511,15 +523,8 @@ class HardenedCapture:
             "total_asset_bytes": self._total_asset_bytes,
             "errors": self.errors,
             "config": asdict(self.cfg),
-            "patches_applied": [
-                "A_io_prefire" if self.cfg.use_io_polyfill else None,
-                "B_dom_stable",
-                "C_three_pass_scroll",
-                "D_shadow_walker" if self.cfg.use_shadow_walker else None,
-                "E_computed_styles" if self.cfg.capture_computed_styles else None,
-            ],
+            "patches_applied": patches,
         }
-        manifest["patches_applied"] = [p for p in manifest["patches_applied"] if p]
         (self.output_dir / "manifest.json").write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
         )
@@ -529,7 +534,7 @@ class HardenedCapture:
         )
         return manifest
 
-    async def _route_handler(self, route: Route):
+    async def _route_handler(self, route: Route) -> None:
         """Block analytics/tracking for cleaner network-idle and faster captures."""
         url = route.request.url
         BLOCK_PATTERNS = (
@@ -559,7 +564,7 @@ class HardenedCapture:
         else:
             await route.continue_()
 
-    async def _on_response(self, response):
+    async def _on_response(self, response: Response) -> None:
         """
         Capture and persist qualifying network response bodies for later HTML asset rewriting.
 
@@ -656,7 +661,7 @@ class HardenedCapture:
         except Exception as e:
             self.errors.append(f"response_handler: {e}")
 
-    async def _three_pass_scroll(self, page: Page):
+    async def _three_pass_scroll(self, page: Page) -> None:
         """Patch C — three-pass scroll: forward-fast, forward-slow, backward-slow.
 
         P2-2 fix: hard wall-clock budget (`KCD_MAX_SCROLL_S`, default 120s).
@@ -733,14 +738,16 @@ class HardenedCapture:
         Uses Patch D shadow DOM walker if enabled.
         """
         # Capture main doc first so we can compare lengths
-        main_html = await page.evaluate("() => document.documentElement.outerHTML") or ""
+        main_html = cast(str, await page.evaluate("() => document.documentElement.outerHTML")) or ""
         main_html_len = len(main_html)
 
         if os.getenv("KCD_NO_IFRAME_SRCDOC", "false").lower() == "true":
             self.log("🔍 KCD_NO_IFRAME_SRCDOC=true → skipping srcdoc detection")
         else:
             # Iframe srcdoc detection (Aura wraps user sites in iframe[srcdoc])
-            iframe_html = await page.evaluate(r"""
+            iframe_html = cast(
+                "str | None",
+                await page.evaluate(r"""
                 () => {
                     const ifr = document.querySelector('iframe[srcdoc]');
                     if (ifr && ifr.srcdoc && ifr.srcdoc.length > 1000) {
@@ -750,7 +757,8 @@ class HardenedCapture:
                     }
                     return null;
                 }
-            """)
+            """),
+            )
             if iframe_html:
                 ratio = (len(iframe_html) / main_html_len) if main_html_len else 0.0
                 min_ratio = float(os.getenv("KCD_IFRAME_MIN_RATIO", "0.5"))
@@ -783,7 +791,7 @@ class HardenedCapture:
                 same_origin = bool(f_netloc) and f_netloc == page_netloc
                 is_srcdoc = f_url.startswith("about:srcdoc")
                 if same_origin or is_srcdoc:
-                    f_html = await f.evaluate("() => document.documentElement.outerHTML")
+                    f_html = cast(str, await f.evaluate("() => document.documentElement.outerHTML"))
                     if len(f_html) > 1000 and len(f_html) >= main_html_len * 0.5:
                         self.log(
                             "🔍 Using same-origin iframe content "
@@ -796,10 +804,13 @@ class HardenedCapture:
 
         # Default: main document with shadow walker if enabled
         if self.cfg.use_shadow_walker:
-            result = await page.evaluate(
-                "() => window.__kratos_serialize_with_shadow(document.documentElement)"
+            result = cast(
+                dict[str, Any],
+                await page.evaluate(
+                    "() => window.__kratos_serialize_with_shadow(document.documentElement)"
+                ),
             )
-            html = result["html"]
+            html: str = result["html"]
             self.shadow_skipped_closed = int(result.get("skipped_closed_shadow_roots", 0))
             self.log(
                 f"📄 Captured main doc with shadow walker ({len(html) // 1024} KB"
@@ -814,9 +825,11 @@ class HardenedCapture:
             self.log(f"📄 Captured main doc ({len(html) // 1024} KB)")
         return html
 
-    async def _capture_computed_styles(self, page: Page) -> dict:
+    async def _capture_computed_styles(self, page: Page) -> dict[str, Any]:
         """Patch E — sample key computed styles per element for downstream extraction."""
-        return await page.evaluate(r"""
+        return cast(
+            dict[str, Any],
+            await page.evaluate(r"""
             () => {
                 const props = ['fontSize','fontWeight','fontFamily','lineHeight','letterSpacing',
                                'color','backgroundColor','backgroundImage',
@@ -860,4 +873,5 @@ class HardenedCapture:
                 });
                 return out;
             }
-        """)
+        """),
+        )

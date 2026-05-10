@@ -68,11 +68,11 @@ warn_return_any = true
 no_implicit_optional = true
 # Allow untyped third-party libs without type stubs.
 ignore_missing_imports = true
-# Stage A typed surface (gated in CI). Stage B will add `kratos_clone` once
-# Playwright async return types are reviewed; Stage C adds `scripts/*`.
+# Stage A+B typed surface (gated in CI). Stage C will add `scripts/*` and
+# fold `downloader.py` in once the legacy module is rewritten.
 # Legacy modules retain their permissive-override rows below so editors that
 # point mypy at them still treat them charitably.
-files = ["personalize", "app.py", "wsgi.py"]
+files = ["personalize", "kratos_clone", "app.py", "wsgi.py"]
 exclude = ['build/', 'dist/', '\.venv/', 'tests/', 'extracted/', 'extracted_v2/']
 
 # Strict on the new modules where typing was authored deliberately.
@@ -88,17 +88,22 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_unreachable = true
 
+[[tool.mypy.overrides]]
+module = ["kratos_clone.*"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unreachable = true
+
 # Permissive on legacy modules — gradual typing path. Tighten as we go.
-# `kratos_clone.*` and `scripts.*` are excluded from `files` above (Stage B/C
-# will fold them in); the override stays so editor-driven mypy on those files
-# still treats them charitably. `ignore_errors = true` is required for
-# `downloader` because `app.py` imports it transitively, and the legacy module
-# has baseline errors (no requests stubs, untyped sync Playwright API).
+# `scripts.*` is excluded from `files` above (Stage C will fold it in); the
+# override stays so editor-driven mypy on those files still treats them
+# charitably. `ignore_errors = true` is required for `downloader` because
+# `app.py` imports it transitively, and the legacy module has baseline errors
+# (no requests stubs, untyped sync Playwright API).
 [[tool.mypy.overrides]]
 module = [
     "wsgi",
     "downloader",
-    "kratos_clone.*",
     "scripts.*",
 ]
 disallow_untyped_defs = false

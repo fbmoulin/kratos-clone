@@ -155,7 +155,7 @@ jobs:
         run: pip-audit --vulnerability-service osv --desc on || true
 
   mypy:
-    name: mypy (Stage A — personalize/ + app.py + wsgi.py strict)
+    name: mypy (Stage A+B — personalize/ + app.py + wsgi.py + kratos_clone/* strict)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -173,10 +173,10 @@ jobs:
             requests urllib3 flask flask-limiter gunicorn psutil structlog
 
       - name: Run mypy
-        # HARD gate. Strict on personalize/ and app.py; permissive on legacy
-        # modules (downloader, kratos_clone, scripts/generate_design_system_v*)
-        # via overrides — gradual typing path. Tighten remaining modules in
-        # Stage B (kratos_clone/* — needs Playwright async return review).
+        # HARD gate. Strict on personalize/, app.py, wsgi.py, and kratos_clone/*;
+        # permissive on legacy modules (downloader, scripts/generate_design_system_v*)
+        # via overrides — gradual typing path. Stage C will fold scripts/* in
+        # and rewrite downloader.py.
         run: mypy --config-file pyproject.toml
 
   bandit:

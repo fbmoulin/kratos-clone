@@ -21,7 +21,7 @@ from pathlib import Path
 from .capture import CaptureConfig, HardenedCapture
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(prog="kratos_clone")
     ap.add_argument("url")
     ap.add_argument("--output-dir", default="./capture")

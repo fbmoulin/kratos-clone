@@ -19,7 +19,8 @@ from __future__ import annotations
 import re
 from urllib.parse import quote
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
+from bs4.element import AttributeValueList
 
 # Attributes that commonly carry a URL value (single URL).
 # Security review extension: cite, data, formaction, action, manifest, background
@@ -58,6 +59,18 @@ _URL_FUNC_RE = re.compile(
     \)""",
     re.VERBOSE,
 )
+
+
+def _as_str(v: str | AttributeValueList) -> str:
+    """Narrow BS4's ``el[attr]`` value to ``str`` for url-bearing attrs.
+
+    BS4 types attribute access as ``str | AttributeValueList``; for the
+    URL-carrying attributes we touch (``src``, ``href``, ``content``,
+    ``style``), real-world HTML5 always yields ``str``. This helper
+    coerces the unreachable multi-valued case via ``" ".join(v)`` so
+    mypy is satisfied without losing semantics.
+    """
+    return v if isinstance(v, str) else " ".join(v)
 
 
 def _build_url_map(captured: dict[str, str]) -> dict[str, str]:
@@ -112,7 +125,7 @@ def _rewrite_css_url_funcs(css: str, url_map: dict[str, str]) -> str:
     if not css:
         return css
 
-    def _sub(m: re.Match) -> str:
+    def _sub(m: re.Match[str]) -> str:
         quote_char = m.group(1)
         url = m.group(2).strip()
         new = _try_replace(url, url_map)
@@ -139,24 +152,22 @@ def rewrite_html_assets(html: str, captured_assets: dict[str, str], base_url: st
     soup = BeautifulSoup(html, "html.parser")
 
     for el in soup.find_all(True):
-        if not isinstance(el, Tag):
-            continue
         # Plain URL attributes
         for attr in _URL_ATTRS:
             if el.has_attr(attr):
-                el[attr] = _try_replace(el[attr], url_map)
+                el[attr] = _try_replace(_as_str(el[attr]), url_map)
         # srcset (multi-URL)
         for attr in _SRCSET_ATTRS:
             if el.has_attr(attr):
-                el[attr] = _rewrite_srcset(el[attr], url_map)
+                el[attr] = _rewrite_srcset(_as_str(el[attr]), url_map)
         # <meta content="...url..."> for og:image and similar
         if el.name in _CONTENT_URL_ELEMENTS and el.has_attr("content"):
-            cur = el["content"] or ""
+            cur = _as_str(el["content"] or "")
             if cur.startswith(("http://", "https://", "//")):
                 el["content"] = _try_replace(cur, url_map)
         # Inline style="..." with url(...)
         if el.has_attr("style"):
-            el["style"] = _rewrite_css_url_funcs(el["style"], url_map)
+            el["style"] = _rewrite_css_url_funcs(_as_str(el["style"]), url_map)
 
     # <style> blocks
     for style in soup.find_all("style"):
