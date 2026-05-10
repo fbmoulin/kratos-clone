@@ -155,7 +155,7 @@ jobs:
         run: pip-audit --vulnerability-service osv --desc on || true
 
   mypy:
-    name: mypy (Stage A+B+C.1 — personalize/ + app.py + wsgi.py + kratos_clone/* + scripts/{inventory,probe,validate,post_process} strict)
+    name: mypy (Stage A+B+C — personalize/ + app.py + wsgi.py + kratos_clone/* + scripts/{inventory,probe,validate,post_process,generate_design_system_v2} strict)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -174,10 +174,10 @@ jobs:
 
       - name: Run mypy
         # HARD gate. Strict on personalize/, app.py, wsgi.py, kratos_clone/*, and
-        # scripts/{inventory,probe,validate,post_process}; permissive on legacy
-        # modules (downloader, scripts/generate_design_system_v{1,2}) via
-        # overrides — gradual typing path. Stage C.2 will fold the v1/v2 generators
-        # in (after deciding whether to delete v1) and downloader.py last.
+        # scripts/{inventory,probe,validate,post_process,generate_design_system_v2};
+        # permissive on legacy `downloader` via overrides — gradual typing path.
+        # Stage C.2 done (this PR: v1 deleted, v2 folded in). Stage D will fold
+        # `downloader.py` in last.
         run: mypy --config-file pyproject.toml
 
   bandit:

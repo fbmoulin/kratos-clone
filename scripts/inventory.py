@@ -328,7 +328,7 @@ def extract_glass_classes(soup: BeautifulSoup) -> Counter[str]:
     glass_classes: Counter[str] = Counter()
     for el in soup.find_all(True):
         for c in _classes_of(el):
-            if "backdrop-" in c or c.startswith("blur") or "/" in c and "neutral" in c:
+            if "backdrop-" in c or c.startswith("blur") or ("/" in c and "neutral" in c):
                 glass_classes[c] += 1
     return glass_classes
 

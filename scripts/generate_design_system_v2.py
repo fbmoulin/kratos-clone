@@ -17,6 +17,39 @@ from copy import deepcopy
 from pathlib import Path
 
 from bs4 import BeautifulSoup, Tag
+from bs4.element import AttributeValueList
+
+
+def _as_str(v: str | AttributeValueList | None) -> str:
+    """Narrow BS4's ``Tag.get(attr)`` return value to ``str``.
+
+    BS4 types attribute access as ``str | AttributeValueList | None``; for
+    URL- and text-bearing attributes we touch (``href``, ``style``,
+    ``content``), real-world HTML5 always yields ``str`` (or ``None`` if
+    missing). Joins multi-valued attrs with ``" "`` for the unreachable
+    case.
+    """
+    if v is None:
+        return ""
+    return v if isinstance(v, str) else " ".join(v)
+
+
+def _classes_of(el: Tag) -> list[str]:
+    """Return the element's ``class`` attribute as a list of strings.
+
+    ``el.get("class", [])`` returns ``str | AttributeValueList | None``.
+    HTML5 multi-valued attrs come back as ``AttributeValueList`` (already
+    list-like); a single class value comes back as ``str``; the default
+    ``[]`` we pass is ``list[Any]``. This helper coerces all three to
+    ``list[str]`` for downstream iteration / membership / counter ops.
+    """
+    v = el.get("class")
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return v.split()
+    return [str(c) for c in v]
+
 
 ROOT = Path(__file__).parent
 SRC = ROOT / "index.html"
@@ -28,12 +61,14 @@ inv = json.loads(INV.read_text())
 new = BeautifulSoup("<!doctype html><html><head></head><body></body></html>", "html.parser")
 new_html = new.html
 new_head = new.head
+assert new_head is not None
 new_body = new.body
+assert new_body is not None
 
 
-def make_section(sec_id, eyebrow, title, lede):
-    section = new.new_tag("section", id=sec_id, **{"class": "ds-section"})
-    inner = new.new_tag("div", **{"class": "ds-section-inner"})
+def make_section(sec_id: str, eyebrow: str, title: str, lede: str) -> tuple[Tag, Tag]:
+    section = new.new_tag("section", id=sec_id, attrs={"class": "ds-section"})
+    inner = new.new_tag("div", attrs={"class": "ds-section-inner"})
     inner.append(
         BeautifulSoup(
             f'<span class="ds-eyebrow">{eyebrow}</span>'
@@ -48,6 +83,7 @@ def make_section(sec_id, eyebrow, title, lede):
 
 # ── 1. HEAD ─────────────────────────────────────────────────────────────────
 orig_head = soup.head
+assert orig_head is not None
 for child in list(orig_head.children):
     if not isinstance(child, Tag):
         continue
@@ -144,7 +180,9 @@ new_body.append(BeautifulSoup(nav_html, "html.parser"))
 
 
 # ── 3. HERO (clone, text adapted) ───────────────────────────────────────────
-hero = deepcopy(soup.find("section"))
+_hero_src = soup.find("section")
+assert _hero_src is not None
+hero = deepcopy(_hero_src)
 hero["id"] = "hero"
 badge_span = hero.select_one(".hero-fade span")
 if badge_span:
@@ -172,10 +210,14 @@ for i, w in enumerate(word_wrappers):
 existing = len(hero.select("h1 .word-wrapper"))
 if existing < len(new_words):
     h1 = hero.find("h1")
+    assert h1 is not None
     template = h1.select_one(".word-wrapper")
-    for w in new_words[existing:]:
+    assert template is not None
+    for word in new_words[existing:]:
         clone = deepcopy(template)
-        clone.select_one(".word-inner").string = w + " "
+        _clone_inner = clone.select_one(".word-inner")
+        assert _clone_inner is not None
+        _clone_inner.string = word + " "
         h1.append(clone)
 
 sub = hero.select_one("p.hero-fade")
@@ -218,7 +260,7 @@ for row_data in DTCG_ROWS:
     cat = row_data["category"]
     status = row_data["status"]
     evidence = row_data["evidence"]
-    row = new.new_tag("div", **{"class": "scorecard"})
+    row = new.new_tag("div", attrs={"class": "scorecard"})
     row.append(
         BeautifulSoup(
             f'<div class="cat">{cat}</div>'
@@ -298,14 +340,14 @@ for name, tag, idx in TYPE_ORDER:
     if idx >= len(items):
         continue
     cls = items[idx]["classes"]
-    sample_node = new.new_tag(tag, **{"class": cls})
+    sample_node = new.new_tag(tag, attrs={"class": cls})
     sample_node.string = SAMPLE_TEXT
-    row = new.new_tag("div", **{"class": "ds-row"})
-    label = new.new_tag("span", **{"class": "label"})
-    label.string = name
-    meta = new.new_tag("span", **{"class": "meta"})
+    row = new.new_tag("div", attrs={"class": "ds-row"})
+    label_tag = new.new_tag("span", attrs={"class": "label"})
+    label_tag.string = name
+    meta = new.new_tag("span", attrs={"class": "meta"})
     meta.string = size_label(cls)
-    row.append(label)
+    row.append(label_tag)
     row.append(sample_node)
     row.append(meta)
     typo_inner.append(row)
@@ -317,14 +359,14 @@ para_subhead = BeautifulSoup(
 typo_inner.append(para_subhead)
 for i, pdata in enumerate(inv["paragraphs"][:8]):
     cls = pdata["classes"]
-    row = new.new_tag("div", **{"class": "ds-row"})
-    label = new.new_tag("span", **{"class": "label"})
-    label.string = f"Paragraph #{i + 1}"
-    p = new.new_tag("p", **{"class": cls})
+    row = new.new_tag("div", attrs={"class": "ds-row"})
+    label_tag = new.new_tag("span", attrs={"class": "label"})
+    label_tag.string = f"Paragraph #{i + 1}"
+    p = new.new_tag("p", attrs={"class": cls})
     p.string = SAMPLE_TEXT
-    meta = new.new_tag("span", **{"class": "meta"})
+    meta = new.new_tag("span", attrs={"class": "meta"})
     meta.string = size_label(cls)
-    row.append(label)
+    row.append(label_tag)
     row.append(p)
     row.append(meta)
     typo_inner.append(row)
@@ -409,12 +451,12 @@ for group_name, swatches in COLOR_GROUPS:
     )
     h.string = group_name
     colors_inner.append(h)
-    grid = new.new_tag("div", **{"class": "ds-grid cols-4"})
+    grid = new.new_tag("div", attrs={"class": "ds-grid cols-4"})
     for color, ctx in swatches:
-        sw = new.new_tag("div", **{"class": "ds-swatch"}, style=f"background:{color};")
-        tag_node = new.new_tag("span", **{"class": "tag"})
+        sw = new.new_tag("div", attrs={"class": "ds-swatch"}, style=f"background:{color};")
+        tag_node = new.new_tag("span", attrs={"class": "tag"})
         tag_node.string = color
-        ctx_node = new.new_tag("span", **{"class": "ctx"})
+        ctx_node = new.new_tag("span", attrs={"class": "ctx"})
         ctx_node.string = ctx
         sw.append(tag_node)
         sw.append(ctx_node)
@@ -426,16 +468,16 @@ h_grad = new.new_tag(
 )
 h_grad.string = "Gradients"
 colors_inner.append(h_grad)
-grad_grid = new.new_tag("div", **{"class": "ds-grid cols-2"})
+grad_grid = new.new_tag("div", attrs={"class": "ds-grid cols-2"})
 for grad_css, ctx in GRADIENTS:
     sw = new.new_tag(
         "div",
-        **{"class": "ds-swatch"},
+        attrs={"class": "ds-swatch"},
         style=f"background:{grad_css};aspect-ratio:2.4;",
     )
-    tag_node = new.new_tag("span", **{"class": "tag"})
+    tag_node = new.new_tag("span", attrs={"class": "tag"})
     tag_node.string = grad_css[:60] + ("…" if len(grad_css) > 60 else "")
-    ctx_node = new.new_tag("span", **{"class": "ctx"})
+    ctx_node = new.new_tag("span", attrs={"class": "ctx"})
     ctx_node.string = ctx
     sw.append(tag_node)
     sw.append(ctx_node)
@@ -456,7 +498,9 @@ comp_section, comp_inner = make_section(
 
 # P1-C fix: replace hardcoded inv["buttons"][N] indices (NexusFlow-only) with
 # semantic class-signature lookup so the generator works on any Tailwind site.
-def find_button_by_classes(buttons, *required, default_label: str = "Action"):
+def find_button_by_classes(
+    buttons: list[dict[str, str]], *required: str, default_label: str = "Action"
+) -> dict[str, str]:
     """First button whose `.classes` contains ALL `required` substrings.
 
     Returns a {"classes", "label"} dict. Falls back to a stub when nothing
@@ -504,16 +548,16 @@ btn_h = new.new_tag(
 btn_h.string = "Buttons"
 comp_inner.append(btn_h)
 for role, cls, label in BUTTON_ROLES:
-    grid = new.new_tag("div", **{"class": "ds-state-grid"})
-    role_node = new.new_tag("span", **{"class": "ds-state-label"})
+    grid = new.new_tag("div", attrs={"class": "ds-state-grid"})
+    role_node = new.new_tag("span", attrs={"class": "ds-state-label"})
     role_node.string = role
     btn_wrap = new.new_tag("div", style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;")
-    btn = new.new_tag("button", **{"class": cls})
+    btn = new.new_tag("button", attrs={"class": cls})
     btn.string = label
     btn_wrap.append(btn)
     btn_dis = new.new_tag(
         "button",
-        **{"class": cls + " opacity-50 cursor-not-allowed pointer-events-none"},
+        attrs={"class": cls + " opacity-50 cursor-not-allowed pointer-events-none"},
     )
     btn_dis.string = label + " (disabled)"
     btn_wrap.append(btn_dis)
@@ -549,8 +593,8 @@ card_h = new.new_tag(
 )
 card_h.string = "Cards"
 comp_inner.append(card_h)
-card_grid = new.new_tag("div", **{"class": "ds-grid cols-3"})
-for icon_name, title, desc in [
+card_grid = new.new_tag("div", attrs={"class": "ds-grid cols-3"})
+for icon_name, card_title, desc in [
     (
         "lucide:zap",
         "Zero Latency",
@@ -571,7 +615,7 @@ for icon_name, title, desc in [
         BeautifulSoup(
             f'<div class="border-gradient-card group relative overflow-hidden rounded-2xl bg-[#0a0a0a] border border-neutral-800/60 p-7 transition-all">'
             f'<iconify-icon icon="{icon_name}" class="text-orange-500" style="font-size:28px;"></iconify-icon>'
-            f'<h3 class="text-2xl font-normal text-white mb-2 tracking-tight mt-4 group-hover:text-orange-400 transition-colors">{title}</h3>'
+            f'<h3 class="text-2xl font-normal text-white mb-2 tracking-tight mt-4 group-hover:text-orange-400 transition-colors">{card_title}</h3>'
             f'<p class="text-base text-neutral-400 font-light">{desc}</p></div>',
             "html.parser",
         )
@@ -696,16 +740,16 @@ MOTION_DEMOS = [
         '<button class="px-6 py-2.5 rounded-full bg-gradient-to-r from-orange-500 to-orange-600 text-white text-base font-normal shadow-[0_0_20px_rgba(249,115,22,0.2)] hover:from-orange-400 hover:to-orange-500 border border-orange-400/50 transition-all">Hover me</button>',
     ),
 ]
-demos_grid = new.new_tag("div", **{"class": "ds-grid cols-3"})
+demos_grid = new.new_tag("div", attrs={"class": "ds-grid cols-3"})
 for cls, desc, demo_html in MOTION_DEMOS:
-    cell = new.new_tag("div", **{"class": "ds-card-demo"})
-    label = new.new_tag("div", **{"class": "demo-label"})
-    label.string = cls
+    cell = new.new_tag("div", attrs={"class": "ds-card-demo"})
+    label_tag = new.new_tag("div", attrs={"class": "demo-label"})
+    label_tag.string = cls
     desc_el = new.new_tag("div", style="font-size:12px;color:#a3a3a3;font-weight:300;")
     desc_el.string = desc
-    frame = new.new_tag("div", **{"class": "motion-frame"})
+    frame = new.new_tag("div", attrs={"class": "motion-frame"})
     frame.append(BeautifulSoup(demo_html, "html.parser"))
-    cell.append(label)
+    cell.append(label_tag)
     cell.append(desc_el)
     cell.append(frame)
     demos_grid.append(cell)
@@ -753,16 +797,18 @@ a11y_inner.append(
 
 
 # Contrast pairs
-def hex_to_rgb(h):
-    h = h.lstrip("#")
-    return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
+def hex_to_rgb(h: str) -> tuple[int, int, int]:
+    h = h.lstrip("#").lower()
+    if len(h) == 3:
+        h = "".join(ch * 2 for ch in h)
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
-def contrast_ratio(c1, c2):
-    def rel_lum(rgb):
-        r, g, b = [c / 255 for c in rgb]
+def contrast_ratio(c1: str, c2: str) -> float:
+    def rel_lum(rgb: tuple[int, int, int]) -> float:
+        r, g, b = (c / 255 for c in rgb)
 
-        def chan(c):
+        def chan(c: float) -> float:
             return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
 
         return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
@@ -860,18 +906,18 @@ icons_section, icons_inner = make_section(
     f"All icons come from <code>lucide</code>, served through <code>iconify-icon</code>. "
     f"{inv['icons_total']} usages across {len(inv['icons'])} unique icons.",
 )
-sizes_grid = new.new_tag("div", **{"class": "ds-grid cols-4"}, style="margin-bottom:32px;")
+sizes_grid = new.new_tag("div", attrs={"class": "ds-grid cols-4"}, style="margin-bottom:32px;")
 for sz, lbl in [(14, "sm · 14"), (18, "md · 18"), (28, "lg · 28"), (48, "xl · 48")]:
-    cell = new.new_tag("div", **{"class": "ds-icon-cell"})
+    cell = new.new_tag("div", attrs={"class": "ds-icon-cell"})
     cell.append(
         BeautifulSoup(
             f'<iconify-icon icon="lucide:settings" style="font-size:{sz}px;"></iconify-icon>',
             "html.parser",
         )
     )
-    name = new.new_tag("span", **{"class": "name"})
-    name.string = lbl
-    cell.append(name)
+    name_tag = new.new_tag("span", attrs={"class": "name"})
+    name_tag.string = lbl
+    cell.append(name_tag)
     sizes_grid.append(cell)
 icons_inner.append(sizes_grid)
 all_h = new.new_tag(
@@ -880,14 +926,14 @@ all_h = new.new_tag(
 )
 all_h.string = f"Icons used in this page ({len(inv['icons'])})"
 icons_inner.append(all_h)
-all_grid = new.new_tag("div", **{"class": "ds-grid cols-6"})
+all_grid = new.new_tag("div", attrs={"class": "ds-grid cols-6"})
 for icon_name in inv["icons"]:
-    cell = new.new_tag("div", **{"class": "ds-icon-cell"})
+    cell = new.new_tag("div", attrs={"class": "ds-icon-cell"})
     cell.append(BeautifulSoup(f'<iconify-icon icon="{icon_name}"></iconify-icon>', "html.parser"))
     short = icon_name.split(":", 1)[-1]
-    name = new.new_tag("span", **{"class": "name"})
-    name.string = short
-    cell.append(name)
+    name_tag = new.new_tag("span", attrs={"class": "name"})
+    name_tag.string = short
+    cell.append(name_tag)
     all_grid.append(cell)
 icons_inner.append(all_grid)
 new_body.append(icons_section)
@@ -1082,9 +1128,9 @@ ci_section, ci_inner = make_section(
 
 # Re-parse classes from source HTML
 src_soup = BeautifulSoup(SRC.read_text(), "html.parser")
-class_counter = Counter()
+class_counter: Counter[str] = Counter()
 for el in src_soup.find_all(class_=True):
-    for c in el.get("class", []):
+    for c in _classes_of(el):
         class_counter[c] += 1
 
 drift_classes = [
@@ -1128,6 +1174,7 @@ new_body.append(ci_section)
 
 # ── 15. Trailing scripts + footer ───────────────────────────────────────────
 orig_body = soup.body
+assert orig_body is not None
 trailing_scripts = orig_body.find_all("script", recursive=False)[-3:]
 for s in trailing_scripts:
     new_body.append(deepcopy(s))

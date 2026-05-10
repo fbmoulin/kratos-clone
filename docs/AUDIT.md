@@ -88,7 +88,7 @@
 | D — Shadow walker | `kratos_clone/capture.py:78-101` (`PATCH_D_SHADOW_DOM_HELPERS`) | ✅ Code exists, but **broken** per P1-A — `cloneNode` doesn't copy shadow roots |
 | E — Computed-style snapshot | `kratos_clone/capture.py:_capture_computed_styles` | ✅ |
 
-Same goes for `scripts/inventory.py`, `generate_design_system_v1.py`, `generate_design_system_v2.py` — they exist and are committed. Domain-explorer missed the fact that `kratos_clone/` is the new module on top of the old `downloader.py`.
+Same goes for `scripts/inventory.py`, ~~`generate_design_system_v1.py`~~ (removed 2026-05-10), `generate_design_system_v2.py` — they exist(ed) and were committed. Domain-explorer missed the fact that `kratos_clone/` is the new module on top of the old `downloader.py`.
 
 **Net effect of this miss:** Domain-explorer's "drift" findings are mostly invalid. Its useful contribution: confirming `scripts/probe.py`, `scripts/post_process.py`, `scripts/validate.py` (referenced in WORKFLOW.md as future Stages 1, 3, 6) are NOT implemented — that's correct documentation drift since WORKFLOW.md presents them as part of the system.
 
@@ -137,7 +137,7 @@ CodeRabbit + Gemini Code Assist + Code Review Doctor already passed PR #1 (the o
 - `/home/fbmoulin/Website-Downloader/kratos_clone/post.py`
 - `/home/fbmoulin/Website-Downloader/kratos_clone/__main__.py`
 - `/home/fbmoulin/Website-Downloader/scripts/inventory.py`
-- `/home/fbmoulin/Website-Downloader/scripts/generate_design_system_v1.py`
+- ~~`/home/fbmoulin/Website-Downloader/scripts/generate_design_system_v1.py`~~ (file removed 2026-05-10)
 - `/home/fbmoulin/Website-Downloader/scripts/generate_design_system_v2.py`
 - `/home/fbmoulin/Website-Downloader/app.py`
 - `/home/fbmoulin/Website-Downloader/templates/index.html`
