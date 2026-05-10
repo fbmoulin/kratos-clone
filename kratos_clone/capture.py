@@ -726,8 +726,8 @@ class HardenedCapture:
                 "scroll_pass_start",
                 pass_num=3,
                 of=self.cfg.scroll_passes,
-                direction="backward",
-                speed="slow",
+            self.logger.info(
+                "scroll_pass_start", pass_num=3, of=self.cfg.scroll_passes, direction="backward", speed="slow"
             )
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(h, -vh, -int(vh * self.cfg.scroll_jump_ratio_slow)):
