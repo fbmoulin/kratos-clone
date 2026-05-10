@@ -18,10 +18,12 @@ import asyncio
 import sys
 from pathlib import Path
 
+from ._logging import configure_logging
 from .capture import CaptureConfig, HardenedCapture
 
 
 def main() -> int:
+    configure_logging()
     ap = argparse.ArgumentParser(prog="kratos_clone")
     ap.add_argument("url")
     ap.add_argument("--output-dir", default="./capture")
@@ -48,7 +50,7 @@ def main() -> int:
         scroll_passes=max(1, min(3, args.passes)),
     )
 
-    cap = HardenedCapture(args.url, args.output_dir, cfg, log=lambda m: print(m, flush=True))
+    cap = HardenedCapture(args.url, args.output_dir, cfg)
     manifest = asyncio.run(cap.run())
     print()
     print("=" * 60)

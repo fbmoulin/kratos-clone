@@ -1,11 +1,9 @@
 import contextlib
 import gc
-import logging
 import os
 import queue
 import re
 import shutil
-import sys
 import threading
 import time
 import uuid
@@ -20,35 +18,10 @@ from flask_limiter.util import get_remote_address
 
 from downloader import WebsiteDownloader, get_site_name, zip_directory
 
-# ── Structured logging setup ────────────────────────────────────────────────
-# JSON output in production (when LOG_FORMAT=json), pretty console otherwise.
-_log_format = os.getenv("LOG_FORMAT", "console").lower()
-_log_level = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+# Structured logging — shared config (also used by `python -m kratos_clone`).
+from kratos_clone._logging import configure_logging
 
-logging.basicConfig(
-    format="%(message)s",
-    stream=sys.stdout,
-    level=_log_level,
-)
-
-_processors: list[Any] = [
-    structlog.contextvars.merge_contextvars,
-    structlog.stdlib.add_logger_name,
-    structlog.processors.add_log_level,
-    structlog.processors.TimeStamper(fmt="iso", utc=True),
-    structlog.processors.format_exc_info,
-]
-if _log_format == "json":
-    _processors.append(structlog.processors.JSONRenderer())
-else:
-    _processors.append(structlog.dev.ConsoleRenderer(colors=True))
-
-structlog.configure(
-    processors=_processors,
-    wrapper_class=structlog.make_filtering_bound_logger(_log_level),
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    cache_logger_on_first_use=True,
-)
+configure_logging()
 
 logger = structlog.get_logger("app")
 
