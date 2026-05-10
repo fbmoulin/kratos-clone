@@ -8,41 +8,30 @@ see `docs/AUDIT.md`.
 
 ---
 
-## 🔥 Now (Phase 3 — production hardening)
+## 🔥 Now — P2 cleanup pass
 
-> Phase 1 (factory + tests) shipped 2026-04-27 (PR #3, b54939a).
-> Phase 2 (structural bug fixes) shipped 2026-04-27 (`feat/phase2-structural-fixes`).
-> All 5 P1 items from audit closed. 62 tests, pytest green. See "Done" log below.
+> Phases 1–6 shipped 2026-04-27. All 9 P1 audit items closed. Remaining: 7 P2
+> + ~13 P3 in `docs/AUDIT.md`. No active phase header — picking off P2 items
+> as opportunistic wins.
 
----
-
-## 🟡 Then (Phase 3 — production hardening)
-
-- [ ] Global asset disk cap — `KCD_MAX_TOTAL_MB=200`, `KCD_MAX_ASSETS=500` env vars + cumulative tracking in `_on_response`. (P1-E)
-- [ ] Three-pass scroll wall-clock budget — `KCD_MAX_SCROLL_S=120`. Emit `scroll_budget_exceeded` flag in manifest. (P2-2)
-- [ ] Strip query strings from `location.href` in browser logger; ANSI-strip in `app.py:_truncate`. (P1-I + P2-4, ~15m)
-- [ ] Drop `force=True` in `request.get_json()`; return 415 on wrong content-type. (P2-3, ~5m)
-- [ ] Rate-limit `/api/client-errors` via Flask-Limiter. (P2-5, ~30m)
-- [ ] Bump `gunicorn>=22.0.0` (CVE-2024-1135) + `pip-audit` job. (P2-6, ~15m)
-- [ ] Browser logger queue cap (`if (queue.length > 200) queue.shift()`). (~5m)
-- [ ] BeautifulSoup-aware HTML rewriting in `post.py` (replace raw `str.replace`). (P1-F, ~1.5h)
+- [ ] **P2-1** — `asset_filename` regex-clean the extension too + assert no `..` / `/` in filename. defense-in-depth on filesystem write. (`kratos_clone/capture.py:174-188`, ~15m)
+- [ ] enrich `scripts/inventory.py` with font-family, durations, shadow extractors. lifts the Phase 5 DTCG scorecard from ~30–50 → genuine high-coverage. (~2h)
+- [ ] tighten mypy from soft to hard gate after typing `app.py` + `kratos_clone/`. (~3h, gradual)
+- [ ] bump bandit gate from HIGH-only to MEDIUM. triage the new findings before flipping. (~1h)
 
 ---
 
 ## 🟢 Later
 
 Phases 4–6 shipped 2026-04-27. Open work tracked as: 7 P2 items + ~13 P3 in
-`docs/AUDIT.md`. Notable next-step candidates:
-- Tighten mypy from soft to hard gate after typing `app.py` + `kratos_clone/`
-- Bump bandit gate to MEDIUM
-- Address Gemini-flagged MEDIUMs from PR #7 (palette regex, asyncio.run-in-sync)
-- Enrich `scripts/inventory.py` with font_families/durations/shadows extractors
-  (raises Phase 5 coverage scorecard from ~30-50 → genuine high-coverage number)
+`docs/AUDIT.md`. Other long-tail candidates beyond the 🔥 Now list live in
+`docs/AUDIT.md` directly.
 
 ---
 
 ## Done ✅
 
+- [x] **2026-05-10** — **P2-12 closed**: `_on_response` skips responses whose originating request carried an `Authorization` header (avoids JWT/API-key leakage when capturing authed views). One-shot warnings on first auth-skip + first `octet-stream` capture. New `authed_skipped` manifest counter. +6 tests in `tests/test_capture_response_handler.py` (183 → 192 passing). Also: TODO.md cleanup — stale Phase 3 "Now/Then" sections collapsed into a forward-looking P2 cleanup list; obsolete Gemini-PR-#7 bullet removed (closed by PR #14).
 - [x] **2026-04-27** — **Phase 6 complete**: DevEx + observability polish. Dependabot weekly grouped pip + github-actions. ruff `[tool.ruff]` config (E/F/W/I/UP/B/C4/SIM rules) + mypy `[tool.mypy]` strict-on-personalize. New CI jobs: `mypy` (soft gate) + `bandit` (HARD gate on HIGH severity, currently 0 after annotating B324 MD5 with `usedforsecurity=False` and B201 debug=True with `# nosec` since it's `__main__`-only). New `X-Request-ID` middleware on `app.py` propagates UUID4 to structlog contextvars + response header (5 tests). Full `KCD_*` env-var reference table in `README.md`. +5 tests (178 → 183 passing). +21 files reformatted via auto-fix.
 - [x] **2026-04-27** — **Phase 5 complete**: Pipeline completion. Three new pipeline-stage scripts (`scripts/probe.py` Stage 1 site recon, `scripts/post_process.py` Stage 3 asset audit + inline, `scripts/validate.py` Stage 6 quality gate with 4 checks: data-driven DTCG scorecard, asset-ref resolution, placeholder grep, WCAG contrast). Hardcoded `DTCG_CATEGORIES` literal removed from `generate_design_system_v2.py` — score is now genuine per-site. **Closes audit P2-8** (tautological scorecard). +39 tests (139 → 178 passing). Visual-diff via Playwright deferred to follow-on (keeps validation gate headless/CI-friendly).
 - [x] **2026-04-27** — **Phase 4 complete**: Personalization MVP. New `personalize/` package (slots, sanitize, openai_client, patcher, pipeline, cli) + 3 Flask routes (`/personalize`, `/api/personalize/structure`, `/api/personalize/run`) + intake form template. Hard budget cap (default \$1.00) on `OpenAIBrandClient`; closed-enum strict JSON schema for patches+images (zero slot-id hallucination). Live-validated against gpt-5-mini Responses API (~\$0.105 spent during E2E test). Closes audit **P2-11** (LLM input/output hardening: control-char strip, magic-byte allow-list PNG/JPEG, EXIF strip, dangerous-HTML strip). +66 tests (74 → 139, +2 live gated). 8 PR commits.

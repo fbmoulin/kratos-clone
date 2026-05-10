@@ -280,6 +280,10 @@ class HardenedCapture:
         self._total_asset_bytes: int = 0
         self._asset_count_dropped: int = 0  # how many assets we refused due to caps
         self._asset_write_failed: int = 0  # write_bytes raised (disk full, perm, ...)
+        # P2-12: skip authed responses (Authorization header on the request).
+        # JWTs / signed URLs / per-user JS bundles can leak otherwise.
+        self._authed_skipped: int = 0
+        self._octet_stream_warned: bool = False  # one-shot warning flag
         # P2-2: scroll budget exceeded flag
         self.scroll_budget_exceeded: bool = False
 
@@ -435,6 +439,7 @@ class HardenedCapture:
             "scroll_budget_exceeded": self.scroll_budget_exceeded,
             "asset_caps_dropped": self._asset_count_dropped,
             "asset_write_failed": self._asset_write_failed,
+            "authed_skipped": self._authed_skipped,
             "total_asset_bytes": self._total_asset_bytes,
             "errors": self.errors,
             "config": asdict(self.cfg),
@@ -487,7 +492,14 @@ class HardenedCapture:
             await route.continue_()
 
     async def _on_response(self, response):
-        """Capture network resources for asset rewriting."""
+        """Capture network resources for asset rewriting.
+
+        P2-12: responses to requests carrying an ``Authorization`` header are
+        skipped to avoid persisting user-specific secrets (JWTs in JS bundles,
+        signed URLs, etc). A one-shot warning is also emitted the first time
+        we capture an ``application/octet-stream`` body, since the content
+        type is opaque and may include unexpected secrets.
+        """
         try:
             url = response.url
             ctype = (response.headers or {}).get("content-type", "")
@@ -508,8 +520,33 @@ class HardenedCapture:
                 )
             ):
                 return
+            # P2-12: skip responses to authenticated requests. Bearer tokens /
+            # cookies in the originating request are a strong signal that the
+            # response body may contain user-specific secrets (JWTs in JS
+            # bundles, signed URLs, ...).
+            try:
+                req_headers = await response.request.all_headers()
+            except Exception:
+                # Older Playwright versions / mocks may not expose all_headers().
+                req_headers = getattr(response.request, "headers", {}) or {}
+            # Playwright lowercases header keys but be defensive across versions.
+            if any(k.lower() == "authorization" for k in req_headers):
+                self._authed_skipped += 1
+                if self._authed_skipped == 1:
+                    self.log(
+                        "⚠️  Skipping authenticated response capture "
+                        "(Authorization header present); see manifest.authed_skipped"
+                    )
+                return
             if url in self.captured_assets:
                 return
+            # P2-12: warn (once) when capturing an opaque octet-stream body.
+            if "octet-stream" in ctype.lower() and not self._octet_stream_warned:
+                self._octet_stream_warned = True
+                self.log(
+                    "⚠️  Capturing octet-stream response — content type is opaque; "
+                    "review manifest for unexpected captures"
+                )
             # P1-E: enforce global asset count cap before fetching body
             if len(self.captured_assets) >= self.cfg.max_assets:
                 self._asset_count_dropped += 1
