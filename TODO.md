@@ -25,6 +25,14 @@ Phases 4–6 shipped 2026-04-27. Open work tracked as: ~13 P3 items in
 `docs/AUDIT.md` (all P2 closed as of 2026-05-10). Other long-tail candidates
 beyond the 🔥 Now list live in `docs/AUDIT.md` directly.
 
+- [ ] **`HardenedCapture` structlog refactor** — replace the `LogCallback` /
+  `self.log(f"⚠️  ...")` prose pattern (~10 call sites in
+  `kratos_clone/capture.py`) with a bound `structlog` logger and snake_case
+  event names + kwargs. Per CLAUDE.md "Logging" convention. Surfaced by
+  CodeRabbit on PR #15; deferred from there because partial adoption would
+  make the refactored lines stand out more than the convention violation.
+  (~1.5h)
+
 ---
 
 ## Done ✅
