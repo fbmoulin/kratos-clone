@@ -57,7 +57,7 @@ ignore = [
 # Tests can use longer lines and import-pattern shortcuts.
 "tests/**/*.py" = ["E501"]
 # Legacy single-script generators run side-effecting code at module level.
-"scripts/generate_design_system_v*.py" = ["E402"]
+"scripts/generate_design_system_v2.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -69,9 +69,8 @@ warn_return_any = true
 no_implicit_optional = true
 # Allow untyped third-party libs without type stubs.
 ignore_missing_imports = true
-# Stage A+B+C.1 typed surface (gated in CI). Stage C.2 will fold the two
-# generators (`scripts/generate_design_system_v*.py`) and `downloader.py` in
-# once those legacy modules are rewritten.
+# Stage A+B+C typed surface (gated in CI). Stage D will fold `downloader.py`
+# in once that legacy module is rewritten or backed by tests.
 # Legacy modules retain their permissive-override rows below so editors that
 # point mypy at them still treat them charitably.
 files = [
@@ -83,6 +82,7 @@ files = [
     "scripts/probe.py",
     "scripts/validate.py",
     "scripts/post_process.py",
+    "scripts/generate_design_system_v2.py",
 ]
 exclude = ['build/', 'dist/', '\.venv/', 'tests/', 'extracted/', 'extracted_v2/']
 
@@ -105,32 +105,29 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_unreachable = true
 
-# Stage C.1 — strict on the four small scripts whose typing was authored
-# deliberately. The two large generators (`generate_design_system_v*`) stay
-# permissive in the override below until Stage C.2 rewrites them.
+# Stage C — strict on the typed scripts (the four small helpers from C.1
+# plus `generate_design_system_v2` folded in at C.2). The legacy v1 generator
+# was deleted in C.2; `downloader.py` remains permissive until Stage D.
 [[tool.mypy.overrides]]
 module = [
     "scripts.inventory",
     "scripts.probe",
     "scripts.validate",
     "scripts.post_process",
+    "scripts.generate_design_system_v2",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_unreachable = true
 
 # Permissive on legacy modules — gradual typing path. Tighten as we go.
-# The two `generate_design_system_v*` generators are excluded from `files`
-# above (Stage C.2 will fold them in); the override stays so editor-driven
-# mypy on those files still treats them charitably. `ignore_errors = true`
-# is required for `downloader` because `app.py` imports it transitively,
-# and the legacy module has baseline errors (untyped sync Playwright API).
+# `ignore_errors = true` is required for `downloader` because `app.py`
+# imports it transitively, and the legacy module has baseline errors
+# (untyped sync Playwright API). Stage D will fold it in.
 [[tool.mypy.overrides]]
 module = [
     "wsgi",
     "downloader",
-    "scripts.generate_design_system_v1",
-    "scripts.generate_design_system_v2",
 ]
 disallow_untyped_defs = false
 check_untyped_defs = false

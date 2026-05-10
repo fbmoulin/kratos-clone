@@ -125,7 +125,6 @@ kratos-clone/
 │   └── post.py                # HTML rewrite + orphan CSS injection
 ├── scripts/                   # NEW — design-system extractors
 │   ├── inventory.py
-│   ├── generate_design_system_v1.py
 │   └── generate_design_system_v2.py
 ├── docs/                      # NEW — architecture + audit
 │   ├── AUDIT.md               # Multi-agent audit findings
