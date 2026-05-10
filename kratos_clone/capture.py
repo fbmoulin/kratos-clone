@@ -629,8 +629,9 @@ class HardenedCapture:
                 # (operators previously had to inspect manifest.json post-hoc).
                 if self._asset_count_dropped == 1:
                     self.logger.warning(
+                    self.logger.warning(
                         "asset_count_cap_reached",
-                        asset_url=url,
+                        url=url,
                         max_assets=self.cfg.max_assets,
                         manifest_field="asset_caps_dropped",
                     )
