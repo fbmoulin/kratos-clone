@@ -603,8 +603,9 @@ class HardenedCapture:
                 self._authed_skipped += 1
                 if self._authed_skipped == 1:
                     self.logger.warning(
+                    self.logger.warning(
                         "authed_response_skipped",
-                        asset_url=url,
+                        url=url,
                         reason="authorization_header_present",
                         manifest_field="authed_skipped",
                     )
