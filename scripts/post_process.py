@@ -22,9 +22,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import structlog
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
+from bs4.element import AttributeValueList
 
 log = structlog.get_logger()
+
+
+def _as_str(v: str | AttributeValueList | None) -> str:
+    """Coerce a BS4 attribute value to ``str``.
+
+    BS4 returns multi-token attrs (``class``, ``rel``) as ``AttributeValueList``;
+    everything else as ``str`` (or ``None`` for missing keys). Inlined per
+    project convention (scripts intentionally one-shot, not a library).
+    """
+    if v is None:
+        return ""
+    return v if isinstance(v, str) else " ".join(v)
 
 
 @dataclass
@@ -53,12 +66,12 @@ def audit_assets(capture_dir: Path) -> AssetAudit:
     return AssetAudit(count=len(paths), total_bytes=total, paths=paths)
 
 
-def _iter_asset_refs(soup: BeautifulSoup) -> Iterable[tuple[object, str, str]]:
+def _iter_asset_refs(soup: BeautifulSoup) -> Iterable[tuple[Tag, str, str]]:
     """Yield ``(tag, attr, value)`` for every URL-bearing attribute pointing
     at a relative path under ``assets/``.
     """
     for attr in ("src", "href"):
-        for tag in soup.find_all(**{attr: True}):
+        for tag in soup.find_all(attrs={attr: True}):
             value = tag.get(attr)
             if isinstance(value, str) and value.startswith("assets/"):
                 yield tag, attr, value

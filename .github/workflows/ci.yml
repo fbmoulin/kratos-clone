@@ -155,7 +155,7 @@ jobs:
         run: pip-audit --vulnerability-service osv --desc on || true
 
   mypy:
-    name: mypy (Stage A+B — personalize/ + app.py + wsgi.py + kratos_clone/* strict)
+    name: mypy (Stage A+B+C.1 — personalize/ + app.py + wsgi.py + kratos_clone/* + scripts/{inventory,probe,validate,post_process} strict)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -170,13 +170,14 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install mypy openai pillow python-dotenv playwright beautifulsoup4 \
-            requests urllib3 flask flask-limiter gunicorn psutil structlog
+            requests types-requests urllib3 flask flask-limiter gunicorn psutil structlog
 
       - name: Run mypy
-        # HARD gate. Strict on personalize/, app.py, wsgi.py, and kratos_clone/*;
-        # permissive on legacy modules (downloader, scripts/generate_design_system_v*)
-        # via overrides — gradual typing path. Stage C will fold scripts/* in
-        # and rewrite downloader.py.
+        # HARD gate. Strict on personalize/, app.py, wsgi.py, kratos_clone/*, and
+        # scripts/{inventory,probe,validate,post_process}; permissive on legacy
+        # modules (downloader, scripts/generate_design_system_v{1,2}) via
+        # overrides — gradual typing path. Stage C.2 will fold the v1/v2 generators
+        # in (after deciding whether to delete v1) and downloader.py last.
         run: mypy --config-file pyproject.toml
 
   bandit:

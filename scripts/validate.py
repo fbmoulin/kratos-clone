@@ -36,8 +36,21 @@ from typing import Any
 
 import structlog
 from bs4 import BeautifulSoup
+from bs4.element import AttributeValueList
 
 log = structlog.get_logger()
+
+
+def _as_str(v: str | AttributeValueList | None) -> str:
+    """Coerce a BS4 attribute value to ``str``.
+
+    BS4 returns multi-token attrs (``class``, ``rel``) as ``AttributeValueList``;
+    everything else as ``str`` (or ``None`` for missing keys). Inlined per
+    project convention (scripts intentionally one-shot, not a library).
+    """
+    if v is None:
+        return ""
+    return v if isinstance(v, str) else " ".join(v)
 
 
 # --- Coverage scorecard ----------------------------------------------------
@@ -147,7 +160,7 @@ def check_asset_refs(capture_dir: Path) -> list[str]:
     soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
     missing: list[str] = []
     for attr in ("src", "href"):
-        for tag in soup.find_all(**{attr: True}):
+        for tag in soup.find_all(attrs={attr: True}):
             value = tag.get(attr)
             if not isinstance(value, str) or not value.startswith("assets/"):
                 continue
@@ -229,7 +242,7 @@ def check_wcag_contrast(capture_dir: Path, *, min_ratio: float = 4.5) -> list[di
     soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
     fails: list[dict[str, Any]] = []
     for tag in soup.find_all(style=True):
-        style = tag.get("style") or ""
+        style = _as_str(tag.get("style"))
         fg_match = _INLINE_COLOR_RE.search(style)
         bg_match = _INLINE_BG_RE.search(style)
         if not (fg_match and bg_match):

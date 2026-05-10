@@ -17,7 +17,40 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
+from bs4.element import AttributeValueList
+
+
+def _as_str(v: str | AttributeValueList | None) -> str:
+    """Narrow BS4's ``Tag.get(attr)`` return value to ``str``.
+
+    BS4 types attribute access as ``str | AttributeValueList | None``; for
+    URL- and text-bearing attributes we touch (``href``, ``style``,
+    ``content``), real-world HTML5 always yields ``str`` (or ``None`` if
+    missing). Joins multi-valued attrs with ``" "`` for the unreachable
+    case.
+    """
+    if v is None:
+        return ""
+    return v if isinstance(v, str) else " ".join(v)
+
+
+def _classes_of(el: Tag) -> list[str]:
+    """Return the element's ``class`` attribute as a list of strings.
+
+    ``el.get("class", [])`` returns ``str | AttributeValueList | None``.
+    HTML5 multi-valued attrs come back as ``AttributeValueList`` (already
+    list-like); a single class value comes back as ``str``; the default
+    ``[]`` we pass is ``list[Any]``. This helper coerces all three to
+    ``list[str]`` for downstream iteration / membership / counter ops.
+    """
+    v = el.get("class")
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return v.split()
+    return [str(c) for c in v]
+
 
 # --- Module-level regexes (compile once) ----------------------------------
 
@@ -42,7 +75,7 @@ def extract_font_families(soup: BeautifulSoup, css_text: str) -> list[str]:
     """Inventory key: 'font_families'. Filters generic fallbacks."""
     fams: list[str] = []
     for link in soup.find_all("link", href=True):
-        href = link.get("href", "")
+        href = _as_str(link.get("href"))
         if "fonts.googleapis" in href or "fonts.gstatic" in href:
             for m in _GFONTS_RE.finditer(href):
                 fams.append(m.group(1).replace("+", " "))
@@ -175,7 +208,7 @@ def extract_sections(soup: BeautifulSoup) -> list[dict[str, Any]]:
         sid = s.get("id") or ""
         h = s.find(["h1", "h2", "h3"])
         title = h.get_text(strip=True)[:80] if h else ""
-        sections.append({"id": sid, "title": title, "classes": s.get("class", [])})
+        sections.append({"id": sid, "title": title, "classes": _classes_of(s)})
     return sections
 
 
@@ -197,7 +230,7 @@ def extract_headings(soup: BeautifulSoup) -> dict[str, list[dict[str, str]]]:
     for tag in ["h1", "h2", "h3", "h4", "h5", "h6"]:
         seen: dict[str, str] = {}
         for el in soup.find_all(tag):
-            cls = " ".join(el.get("class", []))
+            cls = " ".join(_classes_of(el))
             if cls not in seen:
                 seen[cls] = el.get_text(strip=True)[:60]
         headings[tag] = [{"classes": k, "sample": v} for k, v in seen.items()]
@@ -209,7 +242,7 @@ def extract_paragraphs(soup: BeautifulSoup) -> list[dict[str, Any]]:
     p_signatures: Counter[str] = Counter()
     p_samples: dict[str, str] = {}
     for p in soup.find_all("p"):
-        cls = " ".join(p.get("class", []))
+        cls = " ".join(_classes_of(p))
         if not cls:
             continue
         p_signatures[cls] += 1
@@ -226,7 +259,7 @@ def extract_buttons(soup: BeautifulSoup) -> list[dict[str, Any]]:
     buttons: list[dict[str, Any]] = []
     seen_btn_sigs: set[str] = set()
     for b in soup.find_all("button"):
-        cls = " ".join(b.get("class", []))
+        cls = " ".join(_classes_of(b))
         if cls and cls not in seen_btn_sigs:
             seen_btn_sigs.add(cls)
             buttons.append(
@@ -246,13 +279,13 @@ def extract_color_tokens(soup: BeautifulSoup) -> tuple[Counter[str], Counter[str
     """Tailwind arbitrary + named color class tokens."""
     arbitrary_colors: Counter[str] = Counter()
     for el in soup.find_all(True):
-        for c in el.get("class", []):
+        for c in _classes_of(el):
             m = re.match(r"^(?:bg|text|border|from|to|via)-\[#([0-9a-fA-F]{3,8})\]$", c)
             if m:
                 arbitrary_colors[c] += 1
     named_color_tokens: Counter[str] = Counter()
     for el in soup.find_all(True):
-        for c in el.get("class", []):
+        for c in _classes_of(el):
             if re.match(
                 r"^(?:bg|text|border)-(?:orange|neutral|white|black|gray|zinc|slate)-?[\w/]*$",
                 c,
@@ -276,7 +309,7 @@ def extract_motion_classes(soup: BeautifulSoup) -> Counter[str]:
         "animate-",
     ]
     for el in soup.find_all(True):
-        for c in el.get("class", []):
+        for c in _classes_of(el):
             for p in motion_patterns:
                 if p in c:
                     motion_classes[c] += 1
@@ -286,7 +319,7 @@ def extract_motion_classes(soup: BeautifulSoup) -> Counter[str]:
 def extract_icons(soup: BeautifulSoup) -> Counter[str]:
     icons: Counter[str] = Counter()
     for el in soup.find_all("iconify-icon"):
-        icons[el.get("icon", "")] += 1
+        icons[_as_str(el.get("icon"))] += 1
     return icons
 
 
@@ -294,7 +327,7 @@ def extract_glass_classes(soup: BeautifulSoup) -> Counter[str]:
     """Backdrop & glass utility classes."""
     glass_classes: Counter[str] = Counter()
     for el in soup.find_all(True):
-        for c in el.get("class", []):
+        for c in _classes_of(el):
             if "backdrop-" in c or c.startswith("blur") or "/" in c and "neutral" in c:
                 glass_classes[c] += 1
     return glass_classes
@@ -304,7 +337,7 @@ def extract_containers(soup: BeautifulSoup) -> Counter[str]:
     """Container max-width tokens."""
     containers: Counter[str] = Counter()
     for el in soup.find_all(True):
-        for c in el.get("class", []):
+        for c in _classes_of(el):
             if c.startswith("max-w-"):
                 containers[c] += 1
     return containers
@@ -314,7 +347,7 @@ def extract_v_rhythm(soup: BeautifulSoup) -> Counter[str]:
     """Section vertical rhythm utility classes (py/pt/pb-N)."""
     v_rhythm: Counter[str] = Counter()
     for s in soup.find_all("section"):
-        for c in s.get("class", []):
+        for c in _classes_of(s):
             if re.match(r"^(?:py|pt|pb)-\d+$", c):
                 v_rhythm[c] += 1
     return v_rhythm
