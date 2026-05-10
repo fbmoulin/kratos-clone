@@ -4,4 +4,4 @@ requests==2.33.1
 beautifulsoup4==4.14.3
 urllib3==2.6.3
 gunicorn==21.2.0
-psutil==5.9.8
+psutil==7.2.2
