@@ -22,6 +22,18 @@ from kratos_clone.capture import CaptureConfig, HardenedCapture
 
 
 def _make_capture(tmp_path: Path) -> HardenedCapture:
+    """
+    Create a HardenedCapture configured to use the given temporary path as its output directory.
+    
+    The function instantiates a default CaptureConfig and a HardenedCapture with base URL "https://example.com/",
+    ensures the capture's assets directory exists (so tests can call _on_response in isolation), and returns the instance.
+    
+    Parameters:
+        tmp_path (Path): Directory to use as the capture's output/assets directory.
+    
+    Returns:
+        HardenedCapture: A HardenedCapture instance configured to write assets to tmp_path.
+    """
     cfg = CaptureConfig()
     cap = HardenedCapture("https://example.com/", str(tmp_path), cfg)
     # ``run()`` would normally create assets_dir; we have to make it ourselves
@@ -31,7 +43,20 @@ def _make_capture(tmp_path: Path) -> HardenedCapture:
 
 
 def _make_response(*, url, ctype, body=b"x", status=200, request_headers=None):
-    """Build a Playwright-Response-shaped mock."""
+    """
+    Create a mock object shaped like a Playwright Response for use in tests.
+    
+    Parameters:
+        url (str): The response URL to set on the mock.
+        ctype (str): Value for the response's Content-Type header.
+        body (bytes): Bytes to be returned by the mock's asynchronous `body()` method.
+        status (int): HTTP status code to set on the mock response.
+        request_headers (dict | None): Headers for the associated request; used for `request.headers`
+            and returned by the asynchronous `request.all_headers()`.
+    
+    Returns:
+        MagicMock: A mock Response with `.url`, `.status`, `.headers`, `.request` and an async `.body()` method.
+    """
     req = MagicMock()
     req.all_headers = AsyncMock(return_value=request_headers or {})
     req.headers = request_headers or {}
@@ -88,6 +113,11 @@ async def test_unauthed_response_captured(tmp_path):
 
 @pytest.mark.asyncio
 async def test_octet_stream_warns_once(tmp_path):
+    """
+    Verifies that HardenedCapture logs exactly one warning for multiple `application/octet-stream` responses.
+    
+    Sends three responses with content-type `application/octet-stream` to `_on_response`, captures log messages, and asserts a single warning mentioning "octet-stream" was emitted and that `cap._octet_stream_warned` is set to True.
+    """
     cap = _make_capture(tmp_path)
     logged: list[str] = []
     cap.log = lambda msg: logged.append(msg)

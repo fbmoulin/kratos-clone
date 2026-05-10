@@ -232,10 +232,31 @@ _EXT_RE = re.compile(r"^[A-Za-z0-9]{1,8}$")
 def hash_url(url: str) -> str:
     # MD5 used purely as a fast content-addressable filename hash (not security).
     # ``usedforsecurity=False`` documents that intent and silences bandit B324.
+    """
+    Produce a short deterministic MD5-based identifier for a URL.
+    
+    Parameters:
+        url (str): The input URL to hash.
+    
+    Returns:
+        str: A 12-character lowercase hexadecimal MD5 digest of the provided URL.
+    """
     return hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()[:12]
 
 
 def asset_filename(url: str) -> str:
+    """
+    Create a filesystem-safe filename from an asset URL by sanitizing the final path segment and appending a short hash.
+    
+    Parameters:
+        url (str): The asset URL whose path will be used to derive the filename.
+    
+    Returns:
+        fname (str): A sanitized filename (base name limited to ASCII alphanumerics, '_', or '-', max 30 chars; optional extension of 1–8 ASCII alphanumerics) suffixed with a 12-character hash, safe for use inside the assets directory.
+    
+    Raises:
+        ValueError: If the generated filename contains path separators, parent-directory sequences, or NUL characters.
+    """
     parsed = urllib.parse.urlparse(url)
     path = urllib.parse.unquote(parsed.path).rstrip("/").split("/")[-1] or "asset"
     # sanitize
@@ -279,6 +300,18 @@ class HardenedCapture:
         cfg: CaptureConfig | None = None,
         log: LogCallback = None,
     ):
+        """
+        Initialize a HardenedCapture instance for the given URL and prepare output paths and internal capture state.
+        
+        Parameters:
+            url (str): Target page URL to capture.
+            output_dir (str | Path): Directory where capture outputs and an `assets/` subdirectory will be written.
+            cfg (CaptureConfig | None): Optional capture configuration; a default CaptureConfig is created when omitted.
+            log (LogCallback | None): Optional logging callback that receives single-string messages; no-op if omitted.
+        
+        Behavior:
+            Sets instance attributes for capture tracking (e.g., captured_assets, network_resources, errors), disk and asset-cap accounting (_total_asset_bytes, _asset_count_dropped, _asset_write_failed), special-case counters and flags used by capture patches (shadow_skipped_closed, _authed_skipped, _octet_stream_warned, scroll_budget_exceeded), and a set for pending asynchronous asset write tasks (_pending_writes).
+        """
         self.url = url
         self.output_dir = Path(output_dir)
         self.assets_dir = self.output_dir / "assets"
@@ -304,7 +337,29 @@ class HardenedCapture:
         self._log(msg)
 
     async def run(self) -> dict:
-        """Returns a manifest dict with stats and file paths."""
+        """
+        Orchestrates a hardened Playwright capture for the configured URL and returns a manifest describing the capture.
+        
+        Performs navigation, patch injection, scrolling, asset capture, optional computed-style snapshot, and writes output files (index.html, manifest.json, optional styles.json, and saved assets). Awaits pending asset writes before closing the browser and enforces configured caps and timeouts.
+        
+        Returns:
+            manifest (dict): Summary of the capture containing keys including:
+                - "url": the captured URL
+                - "captured_at": UNIX timestamp of completion
+                - "duration_s": capture duration in seconds
+                - "assets_count": number of saved assets
+                - "html_size_kb": size of the rewritten HTML in KB
+                - "styles_json_size_kb": size of the styles snapshot in KB (or None)
+                - "shadow_skipped_closed": count of closed shadow roots skipped during serialization
+                - "scroll_budget_exceeded": True if scrolling exceeded configured wall-clock budget
+                - "asset_caps_dropped": number of assets dropped due to caps
+                - "asset_write_failed": number of asset write failures
+                - "authed_skipped": number of responses skipped due to Authorization headers
+                - "total_asset_bytes": cumulative size of captured assets in bytes
+                - "errors": list of non-fatal error messages collected during capture
+                - "config": the capture configuration as a dict
+                - "patches_applied": list of applied patch identifiers (e.g., "A_io_prefire", "B_dom_stable", ...)
+        """
         t_start = time.time()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.assets_dir.mkdir(exist_ok=True)
@@ -505,13 +560,10 @@ class HardenedCapture:
             await route.continue_()
 
     async def _on_response(self, response):
-        """Capture network resources for asset rewriting.
-
-        P2-12: responses to requests carrying an ``Authorization`` header are
-        skipped to avoid persisting user-specific secrets (JWTs in JS bundles,
-        signed URLs, etc). A one-shot warning is also emitted the first time
-        we capture an ``application/octet-stream`` body, since the content
-        type is opaque and may include unexpected secrets.
+        """
+        Capture and persist qualifying network response bodies for later HTML asset rewriting.
+        
+        Filters out non-asset responses (e.g., status >= 400 or unsupported content-types) and skips any response whose originating request carried an Authorization header. Enforces the configured per-asset (8 MB) and cumulative asset-byte caps and the configured maximum asset count; when caps are hit it increments the corresponding counters and drops further assets. Emits a one-time warning when the first authenticated response is skipped and a one-time warning when the first opaque `application/octet-stream` is captured. Successful captures are written to disk under `assets_dir` using `asset_filename(url)`, recorded in `captured_assets` (mapping URL -> saved path) and `network_resources`, and accounted toward `_total_asset_bytes`. Write failures increment `_asset_write_failed` and append an `asset_write_failed:` error entry. Failures to obtain a response body are silently skipped; unexpected handler errors are appended to `errors` as `response_handler: ...`.
         """
         try:
             url = response.url
