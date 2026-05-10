@@ -645,8 +645,9 @@ class HardenedCapture:
                     self._asset_count_dropped += 1
                     if self._asset_count_dropped == 1:
                         self.logger.warning(
+                        self.logger.warning(
                             "asset_bytes_cap_reached",
-                            asset_url=url,
+                            url=url,
                             max_total_mb=self.cfg.max_total_asset_mb,
                             manifest_field="asset_caps_dropped",
                         )
