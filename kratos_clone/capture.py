@@ -695,8 +695,8 @@ class HardenedCapture:
                 "scroll_pass_start",
                 pass_num=1,
                 of=self.cfg.scroll_passes,
-                direction="forward",
-                speed="fast",
+            self.logger.info(
+                "scroll_pass_start", pass_num=1, of=self.cfg.scroll_passes, direction="forward", speed="fast"
             )
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_fast)):
                 if over_budget():
