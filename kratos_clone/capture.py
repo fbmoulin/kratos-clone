@@ -791,7 +791,7 @@ class HardenedCapture:
                 same_origin = bool(f_netloc) and f_netloc == page_netloc
                 is_srcdoc = f_url.startswith("about:srcdoc")
                 if same_origin or is_srcdoc:
-                    f_html = cast(str, await f.evaluate("() => document.documentElement.outerHTML"))
+                    f_html = cast(str, await f.evaluate("() => document.documentElement.outerHTML")) or ""
                     if len(f_html) > 1000 and len(f_html) >= main_html_len * 0.5:
                         self.log(
                             "🔍 Using same-origin iframe content "
