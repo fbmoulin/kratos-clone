@@ -10,12 +10,12 @@ see `docs/AUDIT.md`.
 
 ## 🔥 Now — P2 cleanup pass
 
-> Phases 1–6 shipped 2026-04-27. All 9 P1 audit items closed. Remaining: ~13
-> P3 in `docs/AUDIT.md` (all P2 items closed as of 2026-05-10). No active phase
-> header — picking off P3 items as opportunistic wins.
+> Phases 1–6 shipped 2026-04-27. All 9 P1 audit items closed. All 12 P2
+> closed as of 2026-05-10. mypy Stages A + B both shipped. Remaining: ~13
+> P3 in `docs/AUDIT.md`. No active phase header — picking off opportunistic
+> wins.
 
-- [ ] **mypy Stage B** — type `kratos_clone/capture.py` + `post.py` and add to mypy `files` list. The 5 `[no-any-return]` errors in `capture.py` need real review of Playwright async return shapes (not just annotation). (~2h)
-- [ ] **mypy Stage C** — type `scripts/*` (inventory, validate, probe, post_process, generators) and fold into strict gate. (~2h)
+- [ ] **mypy Stage C** — type `scripts/*` (inventory, validate, probe, post_process, generators) and fold into strict gate. After this, only `downloader.py` (legacy upstream) stays permissive. (~2h)
 
 ---
 
@@ -37,6 +37,7 @@ beyond the 🔥 Now list live in `docs/AUDIT.md` directly.
 
 ## Done ✅
 
+- [x] **2026-05-10** — **mypy Stage B**: `kratos_clone/capture.py`, `post.py`, `__main__.py` added to mypy strict gate (alongside Stage A's `app.py` + `personalize/*` + `wsgi.py`). 15 mypy errors fixed without a single `# type: ignore`: 5 `[no-untyped-def]` → real annotations; 4 `[no-any-return]` from `await page.evaluate(...)` → `cast(str | dict[str, Any], ...)` at each call site; 4 `[arg-type]` + 1 `[union-attr]` in `post.py` → `_as_str` helper coerces `str | AttributeValueList`; 1 `[attr-defined]` → manifest comprehension pre-built as `patches: list[str]`; 1 `[unreachable]` from `warn_unreachable=true` → dead `isinstance(el, Tag)` guard removed (BS4 `find_all(True)` only returns Tags). `network_resources` + `_pending_writes` instance attrs tightened. `pyproject.toml`: `kratos_clone/` added to `[tool.mypy] files`; new strict override block. CI step renamed `mypy (Stage A+B — personalize/ + app.py + wsgi.py + kratos_clone/* strict)`. 5 files / +80/-50 LOC. Zero behavior change. 210 tests still passing. Stage C (`scripts/*` + `downloader.py`) deferred.
 - [x] **2026-05-10** — **`🔥 Now` cleanup: inventory enrichment + bandit MEDIUM + mypy Stage A**. (a) `scripts/inventory.py` refactored from script to importable module-with-`main()`; +6 extractors (`font_families`, `font_weights`, `durations`, `shadows`, `gradients`, `borders`) wired into output. Keys match `validate.py` `_judge_category` exactly — DTCG scorecard now reflects genuine inventory evidence instead of always-`missing`. +12 tests in `tests/test_inventory.py` (197 → 209). (b) Bandit CI gate flipped HIGH → MEDIUM (`.github/workflows/ci.yml`); 0 MEDIUM findings — no code changes needed. (c) Mypy Stage A — `app.py` typed strictly (~25 functions annotated, 4 module-level dict annotations); `[[tool.mypy.overrides]]` adds `app` to the strict block; CI mypy step is now a HARD gate. `files = ["personalize", "app.py", "wsgi.py"]` defines the Stage A surface; `kratos_clone.*` and `scripts.*` deferred to Stage B / C. CI step renamed `mypy (Stage A — personalize/ + app.py + wsgi.py strict)`.
 - [x] **2026-05-10** — **P2-1, P2-9, P2-10 closed + 6 housekeeping rows synced**. (a) `asset_filename` allow-lists ext via `^[A-Za-z0-9]{1,8}$` and raises `ValueError` on assembled fname containing `/`, `\`, `..`, or NUL; +5 tests (192 → 197 passing). (b) `docs/WORKFLOW.md` Quick-wins row for Patch A reworded from "+70% lazy-load capture" to qualitative observation (P2-9); new Stage 3 bullet credits `kratos_clone/post.py` orphan-link injection as the CSS-recovery mechanism (P2-10). (c) `docs/AUDIT.md` rows P2-1..P2-7, P2-9, P2-10 all struck through with file:line evidence — P2-2..P2-6 closed in Phase 3, P2-7 closed in Phase 1; this commit only documents them. **All 12 P2 audit items now closed.** Remaining open: ~13 P3 only.
 - [x] **2026-05-10** — **P2-12 closed**: `_on_response` skips responses whose originating request carried an `Authorization` header (avoids JWT/API-key leakage when capturing authed views). One-shot warnings on first auth-skip + first `octet-stream` capture. New `authed_skipped` manifest counter. +6 tests in `tests/test_capture_response_handler.py` (183 → 192 passing). Also: TODO.md cleanup — stale Phase 3 "Now/Then" sections collapsed into a forward-looking P2 cleanup list; obsolete Gemini-PR-#7 bullet removed (closed by PR #14).
