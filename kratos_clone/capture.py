@@ -226,6 +226,9 @@ class CaptureConfig:
 
 
 # ── Asset hashing & filename helpers ─────────────────────────────────────────
+_EXT_RE = re.compile(r"^[A-Za-z0-9]{1,8}$")
+
+
 def hash_url(url: str) -> str:
     # MD5 used purely as a fast content-addressable filename hash (not security).
     # ``usedforsecurity=False`` documents that intent and silences bandit B324.
@@ -238,11 +241,21 @@ def asset_filename(url: str) -> str:
     # sanitize
     name, _, ext = path.rpartition(".")
     if not name:
-        name = ext
-        ext = ""
+        name, ext = ext, ""
     name = re.sub(r"[^A-Za-z0-9_-]", "_", name)[:30] or "asset"
+    # P2-1: also sanitize the extension. URL-decoded paths can carry NUL,
+    # path separators, or unicode; allow-list ASCII alphanumerics 1-8 chars.
+    if ext and not _EXT_RE.match(ext):
+        ext = re.sub(r"[^A-Za-z0-9]", "", ext)[:8]
     h = hash_url(url)
-    return f"{name}_{h}.{ext}" if ext else f"{name}_{h}"
+    fname = f"{name}_{h}.{ext}" if ext else f"{name}_{h}"
+    # P2-1 defense-in-depth: refuse anything that could escape the assets dir.
+    # Use ValueError (NOT assert — `python -O` strips asserts; this is a
+    # security check). The caller (_on_response) wraps body() in try/except,
+    # so a ValueError is logged as an `errors` entry, not a crash.
+    if "/" in fname or "\\" in fname or ".." in fname or "\x00" in fname:
+        raise ValueError(f"unsafe asset filename: {fname!r}")
+    return fname
 
 
 # ── Logger callback type ─────────────────────────────────────────────────────

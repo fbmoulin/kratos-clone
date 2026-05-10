@@ -97,6 +97,71 @@ def test_asset_filename_collision_resistance():
     assert a != b  # different host → different hash → different fname
 
 
+# ── P2-1: extension sanitization + path-traversal guard ─────────────────────
+
+
+def test_asset_filename_extension_sanitized_to_alphanum():
+    """Ext with NUL / non-ASCII gets reduced to alnum-only, ≤8 chars."""
+    fn = asset_filename("https://x.com/foo.PnG%00")
+    # Last segment after underscore is the ext (alnum only, no NUL).
+    assert "\\x00" not in fn
+    assert "\x00" not in fn
+    # Filename ends with .<alnum> or has no extension.
+    if "." in fn:
+        ext = fn.rsplit(".", 1)[1]
+        assert ext.isalnum(), f"extension {ext!r} should be alphanumeric"
+        assert len(ext) <= 8
+
+
+def test_asset_filename_extension_length_capped_at_8():
+    """Long extensions are truncated to 8 alnum chars."""
+    fn = asset_filename("https://x.com/foo.thisisaverylongextension")
+    if "." in fn:
+        ext = fn.rsplit(".", 1)[1]
+        assert len(ext) <= 8
+
+
+def test_asset_filename_rejects_path_traversal():
+    """Filename never contains ``/``, ``\\``, ``..``, or NUL."""
+    # Various pathological inputs that previously could leak through.
+    for url in [
+        "https://x.com/foo.png",
+        "https://x.com/foo.PnG%00",
+        "https://x.com/foo.bar%2fbaz",
+        "https://x.com/foo.thisisaverylongextension",
+        "https://x.com/foo.%2e%2e",
+    ]:
+        fn = asset_filename(url)
+        assert "/" not in fn, f"separator leak in {fn!r} from {url!r}"
+        assert "\\" not in fn, f"separator leak in {fn!r} from {url!r}"
+        assert ".." not in fn, f"traversal leak in {fn!r} from {url!r}"
+        assert "\x00" not in fn, f"NUL leak in {fn!r} from {url!r}"
+
+
+def test_asset_filename_multidot_keeps_last_segment_as_ext():
+    """``bundle.min.js`` keeps ``js`` as ext; ``min`` joins the name."""
+    fn = asset_filename("https://x.com/bundle.min.js")
+    assert fn.endswith(".js"), f"expected .js extension, got {fn!r}"
+    # Name segment (before _<hash>.js) should contain the sanitized "bundle.min".
+    name_part = fn.rsplit(".", 1)[0]  # drop .js
+    name_part = name_part.rsplit("_", 1)[0]  # drop _<hash>
+    assert "bundle" in name_part
+
+
+def test_asset_filename_basic_extensions_unchanged():
+    """Common short alnum extensions pass through untouched."""
+    for url, expected_ext in [
+        ("https://x.com/a.png", "png"),
+        ("https://x.com/a.jpg", "jpg"),
+        ("https://x.com/a.webp", "webp"),
+        ("https://x.com/a.woff2", "woff2"),
+        ("https://x.com/a.css", "css"),
+        ("https://x.com/a.js", "js"),
+    ]:
+        fn = asset_filename(url)
+        assert fn.endswith(f".{expected_ext}"), f"{fn!r} should end with .{expected_ext}"
+
+
 # ── WCAG 2.2 contrast ratio (referenced in scripts/generate_design_system_v2.py) ──
 # Implemented inline here to avoid importing the module-level-execution script.
 # Algorithm per https://www.w3.org/WAI/GL/wiki/Contrast_ratio

@@ -10,11 +10,10 @@ see `docs/AUDIT.md`.
 
 ## 🔥 Now — P2 cleanup pass
 
-> Phases 1–6 shipped 2026-04-27. All 9 P1 audit items closed. Remaining: 7 P2
-> + ~13 P3 in `docs/AUDIT.md`. No active phase header — picking off P2 items
-> as opportunistic wins.
+> Phases 1–6 shipped 2026-04-27. All 9 P1 audit items closed. Remaining: ~13
+> P3 in `docs/AUDIT.md` (all P2 items closed as of 2026-05-10). No active phase
+> header — picking off P3 items as opportunistic wins.
 
-- [ ] **P2-1** — `asset_filename` regex-clean the extension too + assert no `..` / `/` in filename. defense-in-depth on filesystem write. (`kratos_clone/capture.py:174-188`, ~15m)
 - [ ] enrich `scripts/inventory.py` with font-family, durations, shadow extractors. lifts the Phase 5 DTCG scorecard from ~30–50 → genuine high-coverage. (~2h)
 - [ ] tighten mypy from soft to hard gate after typing `app.py` + `kratos_clone/`. (~3h, gradual)
 - [ ] bump bandit gate from HIGH-only to MEDIUM. triage the new findings before flipping. (~1h)
@@ -23,14 +22,15 @@ see `docs/AUDIT.md`.
 
 ## 🟢 Later
 
-Phases 4–6 shipped 2026-04-27. Open work tracked as: 7 P2 items + ~13 P3 in
-`docs/AUDIT.md`. Other long-tail candidates beyond the 🔥 Now list live in
-`docs/AUDIT.md` directly.
+Phases 4–6 shipped 2026-04-27. Open work tracked as: ~13 P3 items in
+`docs/AUDIT.md` (all P2 closed as of 2026-05-10). Other long-tail candidates
+beyond the 🔥 Now list live in `docs/AUDIT.md` directly.
 
 ---
 
 ## Done ✅
 
+- [x] **2026-05-10** — **P2-1, P2-9, P2-10 closed + 6 housekeeping rows synced**. (a) `asset_filename` allow-lists ext via `^[A-Za-z0-9]{1,8}$` and raises `ValueError` on assembled fname containing `/`, `\`, `..`, or NUL; +5 tests (192 → 197 passing). (b) `docs/WORKFLOW.md` Quick-wins row for Patch A reworded from "+70% lazy-load capture" to qualitative observation (P2-9); new Stage 3 bullet credits `kratos_clone/post.py` orphan-link injection as the CSS-recovery mechanism (P2-10). (c) `docs/AUDIT.md` rows P2-1..P2-7, P2-9, P2-10 all struck through with file:line evidence — P2-2..P2-6 closed in Phase 3, P2-7 closed in Phase 1; this commit only documents them. **All 12 P2 audit items now closed.** Remaining open: ~13 P3 only.
 - [x] **2026-05-10** — **P2-12 closed**: `_on_response` skips responses whose originating request carried an `Authorization` header (avoids JWT/API-key leakage when capturing authed views). One-shot warnings on first auth-skip + first `octet-stream` capture. New `authed_skipped` manifest counter. +6 tests in `tests/test_capture_response_handler.py` (183 → 192 passing). Also: TODO.md cleanup — stale Phase 3 "Now/Then" sections collapsed into a forward-looking P2 cleanup list; obsolete Gemini-PR-#7 bullet removed (closed by PR #14).
 - [x] **2026-04-27** — **Phase 6 complete**: DevEx + observability polish. Dependabot weekly grouped pip + github-actions. ruff `[tool.ruff]` config (E/F/W/I/UP/B/C4/SIM rules) + mypy `[tool.mypy]` strict-on-personalize. New CI jobs: `mypy` (soft gate) + `bandit` (HARD gate on HIGH severity, currently 0 after annotating B324 MD5 with `usedforsecurity=False` and B201 debug=True with `# nosec` since it's `__main__`-only). New `X-Request-ID` middleware on `app.py` propagates UUID4 to structlog contextvars + response header (5 tests). Full `KCD_*` env-var reference table in `README.md`. +5 tests (178 → 183 passing). +21 files reformatted via auto-fix.
 - [x] **2026-04-27** — **Phase 5 complete**: Pipeline completion. Three new pipeline-stage scripts (`scripts/probe.py` Stage 1 site recon, `scripts/post_process.py` Stage 3 asset audit + inline, `scripts/validate.py` Stage 6 quality gate with 4 checks: data-driven DTCG scorecard, asset-ref resolution, placeholder grep, WCAG contrast). Hardcoded `DTCG_CATEGORIES` literal removed from `generate_design_system_v2.py` — score is now genuine per-site. **Closes audit P2-8** (tautological scorecard). +39 tests (139 → 178 passing). Visual-diff via Playwright deferred to follow-on (keeps validation gate headless/CI-friendly).

@@ -198,13 +198,14 @@ KCD_CAPTURE_COMPUTED_STYLES=true # new — emits styles.json
 
 ### Stage 3 — Post-process (5-15 s)
 
-`scripts/post_process.py`:
+`scripts/post_process.py` — but the structurally-significant rewriter lives in `kratos_clone/post.py:166-179` (`rewrite_html_assets`) and runs inline at capture-time:
 
-1. **Strip destructive CSS** — remove `<style data-scroll-fix="true">` and similar overlays IF `KCD_PRESERVE_ANIMATIONS=true` (default true going forward).
-2. **Asset audit** — diff captured assets vs `<img>` / `url()` references in HTML; report broken refs.
-3. **Image fallback handler** — if source page has a fallback handler script (Aura's `data-img-fallback-handler`), keep it; ensures CDN images that 404 cycle through replicas.
-4. **Inline base-64 small images** (<10 KB, opt-in) so the file is portable.
-5. **Run `_inventory.py`** to emit `_inventory.json` (the same script we used for v1; reusable).
+1. **Orphan `<link rel="stylesheet">` injection** — `kratos_clone/post.py:166-179` scans captured `.css` assets, diffs against the serialized DOM, and re-injects any CSS file referenced only from an iframe-srcdoc wrapper or a stripped `<head>`. **This is the mechanism behind the CSS recovery originally over-credited to the 5-patch hardening (audit P2-10).** On Aura/iframe-srcdoc sites it recovers the entire Tailwind bundle (~440 KB) that would otherwise be omitted.
+2. **Strip destructive CSS** — remove `<style data-scroll-fix="true">` and similar overlays IF `KCD_PRESERVE_ANIMATIONS=true` (default true going forward).
+3. **Asset audit** — diff captured assets vs `<img>` / `url()` references in HTML; report broken refs.
+4. **Image fallback handler** — if source page has a fallback handler script (Aura's `data-img-fallback-handler`), keep it; ensures CDN images that 404 cycle through replicas.
+5. **Inline base-64 small images** (<10 KB, opt-in) so the file is portable.
+6. **Run `_inventory.py`** to emit `_inventory.json` (the same script we used for v1; reusable).
 
 ### Stage 4 — Extract (10-30 s)
 
@@ -297,7 +298,7 @@ Website-Downloader/
 | # | Item | Stage | Effort | Expected gain |
 |---|------|-------|--------|---------------|
 | 1 | Add `KCD_PRESERVE_ANIMATIONS=true` flag (skip scroll-fix CSS injection) | 2/3 | XS | Restores GSAP/AOS animations |
-| 2 | Patch A: IntersectionObserver pre-fire polyfill | 2 | S | +70% lazy-load capture |
+| 2 | Patch A: IntersectionObserver pre-fire polyfill | 2 | S | Qualitative: lazy-load sections that returned blank in upstream `downloader.py` now render fully (no A/B isolation; see audit P2-9) |
 | 3 | Patch B: networkidle + DOM-stable predicate | 2 | S | Catches code-split chunks |
 | 4 | Patch C: Three-pass scroll + Lenis detect | 2 | M | +30% scroll-triggered content |
 | 5 | Patch E: computed-style snapshot → `styles.json` | 2 | M | Enables true DTCG extraction |
