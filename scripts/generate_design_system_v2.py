@@ -798,7 +798,9 @@ a11y_inner.append(
 
 # Contrast pairs
 def hex_to_rgb(h: str) -> tuple[int, int, int]:
-    h = h.lstrip("#")
+    h = h.lstrip("#").lower()
+    if len(h) == 3:
+        h = "".join(ch * 2 for ch in h)
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
