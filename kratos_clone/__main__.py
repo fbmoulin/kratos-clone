@@ -18,10 +18,12 @@ import asyncio
 import sys
 from pathlib import Path
 
+from ._logging import configure_logging
 from .capture import CaptureConfig, HardenedCapture
 
 
 def main() -> int:
+    configure_logging()
     ap = argparse.ArgumentParser(prog="kratos_clone")
     ap.add_argument("url")
     ap.add_argument("--output-dir", default="./capture")

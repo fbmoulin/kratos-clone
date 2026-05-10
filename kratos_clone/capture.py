@@ -461,16 +461,21 @@ class HardenedCapture:
             # every tracked task; the timeout caps total wait at 10s in case a
             # response body() never resolves.
             if self._pending_writes:
-                self.logger.info("asset_writes_awaiting", pending=len(self._pending_writes))
+                pending_before = len(self._pending_writes)
+                self.logger.info("asset_writes_awaiting", pending=pending_before)
                 try:
                     await asyncio.wait_for(
                         asyncio.gather(*self._pending_writes, return_exceptions=True),
                         timeout=10.0,
                     )
                 except TimeoutError:
-                    leaked = len(self._pending_writes)
-                    self.logger.warning("asset_writes_timeout", leaked=leaked, timeout_s=10.0)
-                    self.errors.append(f"asset_write_timeout: {leaked} pending")
+                    # Read pre-await count (sampling len(self._pending_writes)
+                    # post-cancellation races with the discard callbacks fired
+                    # by gather as it propagates cancellation to each task).
+                    self.logger.warning(
+                        "asset_writes_timeout", leaked=pending_before, timeout_s=10.0
+                    )
+                    self.errors.append(f"asset_write_timeout: {pending_before} pending")
 
             await context.close()
             await browser.close()
@@ -599,6 +604,7 @@ class HardenedCapture:
                 if self._authed_skipped == 1:
                     self.logger.warning(
                         "authed_response_skipped",
+                        asset_url=url,
                         reason="authorization_header_present",
                         manifest_field="authed_skipped",
                     )
@@ -610,6 +616,7 @@ class HardenedCapture:
                 self._octet_stream_warned = True
                 self.logger.warning(
                     "octet_stream_captured",
+                    asset_url=url,
                     reason="opaque_content_type",
                     note="review manifest for unexpected captures",
                 )
@@ -621,6 +628,7 @@ class HardenedCapture:
                 if self._asset_count_dropped == 1:
                     self.logger.warning(
                         "asset_count_cap_reached",
+                        asset_url=url,
                         max_assets=self.cfg.max_assets,
                         manifest_field="asset_caps_dropped",
                     )
@@ -636,6 +644,7 @@ class HardenedCapture:
                     if self._asset_count_dropped == 1:
                         self.logger.warning(
                             "asset_bytes_cap_reached",
+                            asset_url=url,
                             max_total_mb=self.cfg.max_total_asset_mb,
                             manifest_field="asset_caps_dropped",
                         )
@@ -679,7 +688,11 @@ class HardenedCapture:
         # Pass 1: forward fast (warm-up)
         if self.cfg.scroll_passes >= 1 and not over_budget():
             self.logger.info(
-                "scroll_pass_start", pass_num=1, of=3, direction="forward", speed="fast"
+                "scroll_pass_start",
+                pass_num=1,
+                of=self.cfg.scroll_passes,
+                direction="forward",
+                speed="fast",
             )
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_fast)):
                 if over_budget():
@@ -691,7 +704,11 @@ class HardenedCapture:
         # Pass 2: forward slow (settle observers)
         if self.cfg.scroll_passes >= 2 and not over_budget():
             self.logger.info(
-                "scroll_pass_start", pass_num=2, of=3, direction="forward", speed="slow"
+                "scroll_pass_start",
+                pass_num=2,
+                of=self.cfg.scroll_passes,
+                direction="forward",
+                speed="slow",
             )
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_slow)):
@@ -704,7 +721,11 @@ class HardenedCapture:
         # Pass 3: backward slow (parallax/sticky)
         if self.cfg.scroll_passes >= 3 and not over_budget():
             self.logger.info(
-                "scroll_pass_start", pass_num=3, of=3, direction="backward", speed="slow"
+                "scroll_pass_start",
+                pass_num=3,
+                of=self.cfg.scroll_passes,
+                direction="backward",
+                speed="slow",
             )
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(h, -vh, -int(vh * self.cfg.scroll_jump_ratio_slow)):

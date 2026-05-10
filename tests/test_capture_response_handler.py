@@ -115,9 +115,14 @@ async def test_unauthed_response_captured(tmp_path):
 @pytest.mark.asyncio
 async def test_octet_stream_warns_once(tmp_path):
     """
-    Verifies that HardenedCapture logs exactly one warning for multiple `application/octet-stream` responses.
+    Verifies that ``HardenedCapture`` emits exactly one structured
+    ``octet_stream_captured`` event for multiple
+    ``application/octet-stream`` responses.
 
-    Sends three responses with content-type `application/octet-stream` to `_on_response`, captures log messages, and asserts a single warning mentioning "octet-stream" was emitted and that `cap._octet_stream_warned` is set to True.
+    Sends three octet-stream responses to ``_on_response``, captures
+    structlog events via ``capture_logs``, asserts exactly one event
+    with ``event == "octet_stream_captured"``, and confirms
+    ``cap._octet_stream_warned`` is set.
     """
     cap = _make_capture(tmp_path)
     with capture_logs() as logs:
