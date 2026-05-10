@@ -155,7 +155,7 @@ jobs:
         run: pip-audit --vulnerability-service osv --desc on || true
 
   mypy:
-    name: mypy (Stage A+B+C — personalize/ + app.py + wsgi.py + kratos_clone/* + scripts/{inventory,probe,validate,post_process,generate_design_system_v2} strict)
+    name: mypy (Stage A+B+C+D — full strict on personalize/ + app.py + wsgi.py + kratos_clone/* + scripts/* + downloader.py)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -173,11 +173,11 @@ jobs:
             requests types-requests urllib3 flask flask-limiter gunicorn psutil structlog
 
       - name: Run mypy
-        # HARD gate. Strict on personalize/, app.py, wsgi.py, kratos_clone/*, and
-        # scripts/{inventory,probe,validate,post_process,generate_design_system_v2};
-        # permissive on legacy `downloader` via overrides — gradual typing path.
-        # Stage C.2 done (this PR: v1 deleted, v2 folded in). Stage D will fold
-        # `downloader.py` in last.
+        # HARD gate. All source files now under strict typing coverage:
+        # personalize/, app.py, wsgi.py, kratos_clone/*,
+        # scripts/{inventory,probe,validate,post_process,generate_design_system_v2},
+        # and downloader.py. Stage D (downloader.py) closed the last permissive
+        # override; the rollout (Stages A–D) is now complete.
         run: mypy --config-file pyproject.toml
 
   bandit:

@@ -69,15 +69,14 @@ warn_return_any = true
 no_implicit_optional = true
 # Allow untyped third-party libs without type stubs.
 ignore_missing_imports = true
-# Stage A+B+C typed surface (gated in CI). Stage D will fold `downloader.py`
-# in once that legacy module is rewritten or backed by tests.
-# Legacy modules retain their permissive-override rows below so editors that
-# point mypy at them still treat them charitably.
+# Stage A+B+C+D typed surface (gated in CI). All source files now under strict
+# mypy coverage.
 files = [
     "personalize",
     "kratos_clone",
     "app.py",
     "wsgi.py",
+    "downloader.py",
     "scripts/inventory.py",
     "scripts/probe.py",
     "scripts/validate.py",
@@ -106,8 +105,7 @@ disallow_incomplete_defs = true
 warn_unreachable = true
 
 # Stage C — strict on the typed scripts (the four small helpers from C.1
-# plus `generate_design_system_v2` folded in at C.2). The legacy v1 generator
-# was deleted in C.2; `downloader.py` remains permissive until Stage D.
+# plus `generate_design_system_v2` folded in at C.2).
 [[tool.mypy.overrides]]
 module = [
     "scripts.inventory",
@@ -120,15 +118,11 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_unreachable = true
 
-# Permissive on legacy modules — gradual typing path. Tighten as we go.
-# `ignore_errors = true` is required for `downloader` because `app.py`
-# imports it transitively, and the legacy module has baseline errors
-# (untyped sync Playwright API). Stage D will fold it in.
+# Stage D — strict on the legacy `downloader` module (annotation-only pass).
+# `wsgi.py` is a 3-line gunicorn entrypoint with no defs to annotate, so it
+# inherits the (deliberately permissive) global config without needing a row.
 [[tool.mypy.overrides]]
-module = [
-    "wsgi",
-    "downloader",
-]
-disallow_untyped_defs = false
-check_untyped_defs = false
-ignore_errors = true
+module = ["downloader"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unreachable = true
