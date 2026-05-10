@@ -155,7 +155,7 @@ jobs:
         run: pip-audit --vulnerability-service osv --desc on || true
 
   mypy:
-    name: mypy (personalize/ strict, rest permissive)
+    name: mypy (Stage A — personalize/ + app.py + wsgi.py strict)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -173,10 +173,11 @@ jobs:
             requests urllib3 flask flask-limiter gunicorn psutil structlog
 
       - name: Run mypy
-        # Soft gate — mypy is wired in Phase 6 with strict only on personalize/.
-        # Legacy modules use permissive overrides to allow gradual typing.
-        # Flip to a hard gate (drop `|| true`) once app.py + kratos_clone are typed.
-        run: mypy --config-file pyproject.toml || true
+        # HARD gate. Strict on personalize/ and app.py; permissive on legacy
+        # modules (downloader, kratos_clone, scripts/generate_design_system_v*)
+        # via overrides — gradual typing path. Tighten remaining modules in
+        # Stage B (kratos_clone/* — needs Playwright async return review).
+        run: mypy --config-file pyproject.toml
 
   bandit:
     name: bandit (security lint)
@@ -194,8 +195,9 @@ jobs:
           pip install --upgrade pip
           pip install bandit
 
-      - name: Run bandit (HIGH gate, MEDIUM/LOW informational)
-        # Hard gate on HIGH-severity findings. MEDIUM/LOW reported but don't
-        # fail. Existing HIGH findings (debug=True in __main__, MD5 for asset
-        # filenames) are annotated #nosec B201 / usedforsecurity=False.
-        run: bandit -r personalize/ kratos_clone/ scripts/ app.py --severity-level high
+      - name: Run bandit (MEDIUM gate, LOW informational)
+        # HARD gate on MEDIUM severity. LOW findings (e.g., 2× B110
+        # try/except/pass) remain informational. Existing HIGH/MEDIUM
+        # findings (debug=True in __main__, MD5 for asset filenames) are
+        # annotated #nosec B201 / usedforsecurity=False.
+        run: bandit -r personalize/ kratos_clone/ scripts/ app.py --severity-level medium

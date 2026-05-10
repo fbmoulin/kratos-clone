@@ -27,9 +27,10 @@
 
 ### 🟠 P1 — High priority
 
-> **Status update 2026-04-27:** P1-A, P1-B, P1-C, P1-D, P1-G, P1-H all RESOLVED in
-> Phase 1 (`b54939a`) and Phase 2 (`feat/phase2-structural-fixes`). Remaining open:
-> P1-E (asset disk cap), P1-F (BeautifulSoup-aware rewriting), P1-I (PII strip).
+> **Status update 2026-05-10:** All 9 P1 items RESOLVED across Phases 1–3
+> (`b54939a`, `feat/phase2-structural-fixes`, Phase 3 hardening pass). P1-A/B/C/D/G/H
+> closed in Phases 1–2; P1-E (asset disk cap), P1-F (BS4-aware rewriting), P1-I (PII
+> strip) closed in Phase 3.
 
 | # | File:line | Finding | Source agent | Status |
 |---|-----------|---------|--------------|--------|
@@ -47,18 +48,18 @@
 
 | # | File:line | Finding |
 |---|-----------|---------|
-| P2-1 | `kratos_clone/capture.py:174-188` | `asset_filename` sanitizes name regex but NOT extension. Defensive: also regex-clean ext + assert no `..`/`/` in filename. |
-| P2-2 | `kratos_clone/capture.py:_three_pass_scroll` | **No wall-clock budget.** Pages with infinite-scroll feeds can run for 40+ s in pass 2 alone. Fix: add `max_scroll_seconds` (default 120s) + emit `scroll_budget_exceeded` in manifest. |
-| P2-3 | `app.py:client_errors:440` | `request.get_json(force=True)` bypasses content-type validation, enabling `text/plain` cross-origin bypass. Fix: drop `force=True`, return 415 on wrong content-type. |
-| P2-4 | `app.py:_truncate` | **ANSI escape injection in console log.** With `LOG_FORMAT=console` (dev default), `\x1b[2J\x1b[H` from a malicious browser entry can clear/scroll the dev terminal. Fix: `s = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "?", s)` in `_truncate`. |
-| P2-5 | `app.py /api/client-errors` | **No rate limit.** 32 KB × 20 entries × N req/s. Fix: Flask-Limiter `@limiter.limit("60 per minute")` for production. |
-| P2-6 | `pyproject.toml:gunicorn>=21.2.0` | **CVE-2024-1135** (HTTP request smuggling) fixed in 22.0.0. Bump floor to `gunicorn>=22.0.0`. |
-| P2-7 | `app.py:80,188` | **Module-level side effects** (`cleanup_downloads_folder()` + `threading.Thread.start()`) make app untestable. Fix: extract to `create_app(start_janitor=True)` factory. |
-| ~~P2-8~~ | `scripts/validate.py:coverage_scorecard` + `scripts/generate_design_system_v2.py` | ✅ **RESOLVED 2026-04-27** — Phase 5. `coverage_scorecard(inventory)` now judges each of the 13 W3C DTCG categories against inventory evidence (full|partial|missing + evidence string). The literal `DTCG_CATEGORIES` list is gone; both the rendered scorecard and the total score are computed at runtime. Honest consequence: legacy NexusFlow capture's score drops from 80.8 (tautology) to a genuine number reflecting what inventory.py actually extracts. |
-| P2-9 | `docs/WORKFLOW.md:75` | **"+70% lazy-load capture" is unsupported.** All 5 patches applied together; no A/B isolation. Fix: either run controlled experiment or soften claim to "qualitative observation". |
-| P2-10 | `docs/WORKFLOW.md` | **"+6650% CSS captured" misattributed.** Recovery is from `post.py:23-36` orphan `<link>` injection, NOT the 5-patch hardening. Fix: WORKFLOW.md should call out orphan injection as the mechanism. |
+| ~~P2-1~~ | `kratos_clone/capture.py:238-258` | ✅ **RESOLVED 2026-05-10** — `asset_filename` now allow-lists ext via `^[A-Za-z0-9]{1,8}$` regex (overlong/non-ASCII collapsed to ≤8 alnum chars) and raises `ValueError` if the assembled fname contains `/`, `\`, `..`, or NUL. +5 regression tests in `tests/test_capture_helpers.py`. |
+| ~~P2-2~~ | `kratos_clone/capture.py:607-660` | ✅ **RESOLVED 2026-04-27** — Phase 3. `_three_pass_scroll` honors `KCD_MAX_SCROLL_S` (default 120s) via `over_budget()` checks at every loop step; sets `self.scroll_budget_exceeded` and surfaces it in manifest at `capture.py:452`. |
+| ~~P2-3~~ | `app.py:526-548` | ✅ **RESOLVED 2026-04-27** — Phase 3. `client_errors` strict-checks `Content-Type: application/json` and returns 415 otherwise; `request.get_json(silent=True)` (no `force=True`). |
+| ~~P2-4~~ | `app.py:497,502-506` | ✅ **RESOLVED 2026-04-27** — Phase 3. `_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")` is applied inside `_truncate` before any console renderer sees the value. ANSI-clear sequences become `?`. |
+| ~~P2-5~~ | `app.py:526-527` | ✅ **RESOLVED 2026-04-27** — Phase 3. Flask-Limiter bound on `/api/client-errors` at `60 per minute` (env-overridable via `CLIENT_ERRORS_RATE_LIMIT`); `Limiter(key_func=get_remote_address)` initialized in `create_app()`. |
+| ~~P2-6~~ | `pyproject.toml:11` | ✅ **RESOLVED 2026-04-27** — Phase 3. Floor bumped to `gunicorn>=22.0.0`; CVE-2024-1135 explicitly noted in the dependency comment. |
+| ~~P2-7~~ | `app.py:242,265-268,684-695` | ✅ **RESOLVED 2026-04-27** — Phase 1. `create_app(start_janitor, run_boot_cleanup)` factory; janitor + boot cleanup gated inside; module level no longer calls them. `import app` is side-effect-free; production uses `gunicorn wsgi:app`. |
+| ~~P2-8~~ | `scripts/validate.py:coverage_scorecard` + `scripts/generate_design_system_v2.py` | ✅ **RESOLVED 2026-04-27** — Phase 5. `coverage_scorecard(inventory)` now judges each of the 13 W3C DTCG categories against inventory evidence (full / partial / missing + evidence string). The literal `DTCG_CATEGORIES` list is gone; both the rendered scorecard and the total score are computed at runtime. Honest consequence: legacy NexusFlow capture's score drops from 80.8 (tautology) to a genuine number reflecting what inventory.py actually extracts. |
+| ~~P2-9~~ | `docs/WORKFLOW.md` | ✅ **RESOLVED 2026-05-10** — Quick-wins table cell for Patch A reworded from `+70% lazy-load capture` (no A/B isolation) to a qualitative observation citing `downloader.py` baseline. |
+| ~~P2-10~~ | `docs/WORKFLOW.md` | ✅ **RESOLVED 2026-05-10** — Stage 3 now leads with an "Orphan `<link>` injection" bullet that credits `kratos_clone/post.py` (`rewrite_html_assets`) as the actual CSS-recovery mechanism; the misattributed "+6650% CSS captured" string had already been removed in a prior commit. |
 | ~~P2-11~~ | `personalize/sanitize.py` | ✅ **RESOLVED 2026-04-27** — Phase 4 implementation closes this. `sanitize_brief_text` strips C0 control chars and bounds length before any LLM interpolation; brief fields go into prompts via `json.dumps(...)`, never f-string. `verify_image_bytes` allow-lists PNG/JPEG by magic bytes (rejects SVG XSS). `strip_exif` removes embedded metadata. `strip_dangerous_html` removes `<script>/<style>/<iframe>/<object>/<embed>`, drops `on*=` handlers, neutralizes `javascript:` in href/src. Defense-in-depth: even though strict JSON schema doesn't allow HTML, every LLM-derived value goes through `strip_dangerous_html` before DOM write. 21 dedicated tests in `tests/test_personalize_sanitize.py`. |
-| P2-12 | `kratos_clone/capture.py:_on_response` | **Network capture writes ALL response bodies including authed ones.** `octet-stream` matches; JWTs/API keys in JS bundles persist unredacted. Fix: skip responses where request had `Authorization` header; warn on `octet-stream`. |
+| ~~P2-12~~ | `kratos_clone/capture.py:_on_response` | ✅ **RESOLVED 2026-05-10** — `_on_response` now awaits `response.request.all_headers()` (with fallback) and skips responses whose originating request carried an `Authorization` header; one-shot warning on first skip + on first `application/octet-stream` capture. New `authed_skipped` counter in manifest. 6 regression tests in `tests/test_capture_response_handler.py`. |
 
 ### 🟢 P3 — Low / informational
 

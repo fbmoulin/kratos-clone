@@ -9,6 +9,9 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
 
 import structlog
 from flask import Flask, Response, jsonify, render_template, request, send_file
@@ -28,7 +31,7 @@ logging.basicConfig(
     level=_log_level,
 )
 
-_processors = [
+_processors: list[Any] = [
     structlog.contextvars.merge_contextvars,
     structlog.stdlib.add_logger_name,
     structlog.processors.add_log_level,
@@ -65,7 +68,7 @@ app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 if os.getenv("TRUST_PROXY", "0").strip() == "1":
     from werkzeug.middleware.proxy_fix import ProxyFix
 
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # type: ignore[method-assign]
     logger.info("proxy_fix_enabled", x_for=1, x_proto=1)
 
 # P2-5: rate-limit /api/client-errors. Lazy: limiter is bound to a route via
@@ -117,19 +120,19 @@ CLEANUP_INTERVAL = 300  # how often the janitor runs
 # Per-session state. Always touch via session_lock when iterating/mutating.
 # Module-level so routes (registered via @app.route below) can close over them;
 # cleared/reset by tests via _reset_state().
-message_queues = {}
-download_results = {}
+message_queues: dict[str, queue.Queue[str]] = {}
+download_results: dict[str, dict[str, Any]] = {}
 session_lock = threading.Lock()
 
 
-def _reset_state():
+def _reset_state() -> None:
     """Test helper — wipe in-memory session state without touching disk."""
     with session_lock:
         message_queues.clear()
         download_results.clear()
 
 
-def cleanup_downloads_folder():
+def cleanup_downloads_folder() -> None:
     """Remove all files and folders from downloads directory."""
     try:
         for item in os.listdir(DOWNLOAD_FOLDER):
@@ -143,7 +146,7 @@ def cleanup_downloads_folder():
         logger.warning("downloads_folder_clear_failed", folder=DOWNLOAD_FOLDER, error=str(e))
 
 
-def _purge_session(session_id):
+def _purge_session(session_id: str) -> None:
     """Remove a single session's in-memory state and any disk artifacts."""
     with session_lock:
         result = download_results.pop(session_id, None)
@@ -164,7 +167,7 @@ def _purge_session(session_id):
             shutil.rmtree(raw_dir)
 
 
-def _cleanup_orphan_files():
+def _cleanup_orphan_files() -> None:
     """
     Remove files/dirs in downloads/ that don't belong to any active session.
     Catches leftovers from worker crashes or restarts.
@@ -201,7 +204,7 @@ def _cleanup_orphan_files():
         logger.error("janitor_orphan_scan_failed", error=str(e))
 
 
-def cleanup_abandoned_sessions():
+def cleanup_abandoned_sessions() -> None:
     """
     Janitor thread: removes complete/error/zombie sessions and orphan files.
     Runs every CLEANUP_INTERVAL seconds.
@@ -239,7 +242,7 @@ def cleanup_abandoned_sessions():
             logger.error("janitor_cycle_failed", error=str(e))
 
 
-def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True):
+def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Flask:
     """Initialize side-effecting parts of the app: ensure DOWNLOAD_FOLDER exists,
     bind the rate limiter, optionally clear stale downloads on boot, and
     optionally start the janitor thread. Returns the module-level `app` for
@@ -270,14 +273,14 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True):
 
 
 @app.route("/")
-def index():
+def index() -> str:
     return render_template("index.html")
 
 
 @app.route("/health")
-def health():
+def health() -> Response:
     """Lightweight health endpoint with memory + session counts for monitoring."""
-    info = {"status": "ok"}
+    info: dict[str, Any] = {"status": "ok"}
     with session_lock:
         info["sessions"] = len(download_results)
         info["queues"] = len(message_queues)
@@ -303,7 +306,7 @@ def health():
 
 
 @app.route("/start-download", methods=["POST"])
-def start_download():
+def start_download() -> tuple[Response, int] | Response:
     """Start download process and return session ID for SSE."""
     data = request.get_json(silent=True) or {}
     url = data.get("url")
@@ -330,7 +333,7 @@ def start_download():
     return jsonify({"session_id": session_id})
 
 
-def process_download(session_id, url):
+def process_download(session_id: str, url: str) -> None:
     """Background download worker."""
     with session_lock:
         q = message_queues.get(session_id)
@@ -340,7 +343,7 @@ def process_download(session_id, url):
     download_dir = os.path.join(DOWNLOAD_FOLDER, session_id)
     zip_path = os.path.join(DOWNLOAD_FOLDER, f"{session_id}.zip")
 
-    def log_callback(message):
+    def log_callback(message: str) -> None:
         q.put(message)
 
     downloader = None
@@ -399,10 +402,10 @@ def process_download(session_id, url):
 
 
 @app.route("/stream/<session_id>")
-def stream(session_id):
+def stream(session_id: str) -> Response:
     """SSE endpoint for log streaming."""
 
-    def generate():
+    def generate() -> Iterator[str]:
         with session_lock:
             q = message_queues.get(session_id)
 
@@ -444,7 +447,7 @@ def stream(session_id):
 
 
 @app.route("/download-file/<session_id>")
-def download_file(session_id):
+def download_file(session_id: str) -> Response | tuple[str, int]:
     """Download the generated ZIP file and clean up immediately."""
     with session_lock:
         result = download_results.get(session_id)
@@ -463,7 +466,7 @@ def download_file(session_id):
     try:
         response = send_file(zip_path, as_attachment=True, download_name=filename)
 
-        def cleanup():
+        def cleanup() -> None:
             time.sleep(2)
             _purge_session(session_id)
             logger.info(
@@ -499,14 +502,14 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 frontend_logger = structlog.get_logger("frontend")
 
 
-def _truncate(value, limit=_FRONTEND_MAX_FIELD_LEN):
+def _truncate(value: Any, limit: int = _FRONTEND_MAX_FIELD_LEN) -> str | None:
     if value is None:
         return None
     s = _CONTROL_CHARS_RE.sub("?", str(value))
     return s if len(s) <= limit else s[:limit] + "…"
 
 
-def _strip_query(url):
+def _strip_query(url: Any) -> str | None:
     """P1-I: drop query string + fragment from logged URLs.
 
     Avoids capturing tokens, session IDs, PII parameters into structured logs
@@ -525,7 +528,7 @@ def _strip_query(url):
 
 @app.route("/api/client-errors", methods=["POST"])
 @limiter.limit(os.getenv("CLIENT_ERRORS_RATE_LIMIT", "60 per minute"))
-def client_errors():
+def client_errors() -> tuple[Response, int] | tuple[str, int]:
     """Ingest frontend error reports from the browser logger."""
     # P2-3: refuse non-JSON content-types. `force=True` previously allowed
     # `text/plain` which bypasses CORS preflight; we now require declared JSON.
@@ -591,14 +594,14 @@ _PERSONALIZE_LOGO_MAX_BYTES = 2 * 1024 * 1024
 
 
 @app.route("/personalize")
-def personalize_page():
+def personalize_page() -> str:
     """Render the Phase 4 intake form. No auth, mirrors the legacy / route."""
     return render_template("personalize.html")
 
 
 @app.route("/api/personalize/structure", methods=["POST"])
 @limiter.limit(os.getenv("PERSONALIZE_STRUCTURE_RATE_LIMIT", "5 per minute"))
-def personalize_structure():
+def personalize_structure() -> tuple[Response, int]:
     """Step 2 — structure a free-form brief into fields via gpt-5-mini."""
     ctype = (request.content_type or "").split(";", 1)[0].strip().lower()
     if ctype != "application/json":
@@ -628,7 +631,7 @@ def personalize_structure():
 
 @app.route("/api/personalize/run", methods=["POST"])
 @limiter.limit(os.getenv("PERSONALIZE_RUN_RATE_LIMIT", "2 per minute"))
-def personalize_run():
+def personalize_run() -> tuple[Response, int]:
     """Steps 4–8 — apply personalization to a captured site."""
     if (request.content_length or 0) > _PERSONALIZE_RUN_MAX_BYTES:
         return jsonify({"error": "payload too large"}), 413
@@ -662,7 +665,7 @@ def personalize_run():
 
     try:
         out_path = run_pipeline(
-            html_dir,
+            Path(html_dir),
             raw_brief="",  # not used when override provided
             logo_bytes=logo_bytes,
             structured_brief_override=brief,
