@@ -234,10 +234,10 @@ def hash_url(url: str) -> str:
     # ``usedforsecurity=False`` documents that intent and silences bandit B324.
     """
     Produce a short deterministic MD5-based identifier for a URL.
-    
+
     Parameters:
         url (str): The input URL to hash.
-    
+
     Returns:
         str: A 12-character lowercase hexadecimal MD5 digest of the provided URL.
     """
@@ -247,13 +247,13 @@ def hash_url(url: str) -> str:
 def asset_filename(url: str) -> str:
     """
     Create a filesystem-safe filename from an asset URL by sanitizing the final path segment and appending a short hash.
-    
+
     Parameters:
         url (str): The asset URL whose path will be used to derive the filename.
-    
+
     Returns:
         fname (str): A sanitized filename (base name limited to ASCII alphanumerics, '_', or '-', max 30 chars; optional extension of 1–8 ASCII alphanumerics) suffixed with a 12-character hash, safe for use inside the assets directory.
-    
+
     Raises:
         ValueError: If the generated filename contains path separators, parent-directory sequences, or NUL characters.
     """
@@ -302,13 +302,13 @@ class HardenedCapture:
     ):
         """
         Initialize a HardenedCapture instance for the given URL and prepare output paths and internal capture state.
-        
+
         Parameters:
             url (str): Target page URL to capture.
             output_dir (str | Path): Directory where capture outputs and an `assets/` subdirectory will be written.
             cfg (CaptureConfig | None): Optional capture configuration; a default CaptureConfig is created when omitted.
             log (LogCallback | None): Optional logging callback that receives single-string messages; no-op if omitted.
-        
+
         Behavior:
             Sets instance attributes for capture tracking (e.g., captured_assets, network_resources, errors), disk and asset-cap accounting (_total_asset_bytes, _asset_count_dropped, _asset_write_failed), special-case counters and flags used by capture patches (shadow_skipped_closed, _authed_skipped, _octet_stream_warned, scroll_budget_exceeded), and a set for pending asynchronous asset write tasks (_pending_writes).
         """
@@ -339,9 +339,9 @@ class HardenedCapture:
     async def run(self) -> dict:
         """
         Orchestrates a hardened Playwright capture for the configured URL and returns a manifest describing the capture.
-        
+
         Performs navigation, patch injection, scrolling, asset capture, optional computed-style snapshot, and writes output files (index.html, manifest.json, optional styles.json, and saved assets). Awaits pending asset writes before closing the browser and enforces configured caps and timeouts.
-        
+
         Returns:
             manifest (dict): Summary of the capture containing keys including:
                 - "url": the captured URL
@@ -562,7 +562,7 @@ class HardenedCapture:
     async def _on_response(self, response):
         """
         Capture and persist qualifying network response bodies for later HTML asset rewriting.
-        
+
         Filters out non-asset responses (e.g., status >= 400 or unsupported content-types) and skips any response whose originating request carried an Authorization header. Enforces the configured per-asset (8 MB) and cumulative asset-byte caps and the configured maximum asset count; when caps are hit it increments the corresponding counters and drops further assets. Emits a one-time warning when the first authenticated response is skipped and a one-time warning when the first opaque `application/octet-stream` is captured. Successful captures are written to disk under `assets_dir` using `asset_filename(url)`, recorded in `captured_assets` (mapping URL -> saved path) and `network_resources`, and accounted toward `_total_asset_bytes`. Write failures increment `_asset_write_failed` and append an `asset_write_failed:` error entry. Failures to obtain a response body are silently skipped; unexpected handler errors are appended to `errors` as `response_handler: ...`.
         """
         try:
