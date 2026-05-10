@@ -1,39 +1,70 @@
+import hashlib
+import html
+import mimetypes
 import os
 import re
-import html
 import shutil
-import hashlib
+from collections.abc import Callable
+from typing import Any, Literal
+from urllib.parse import urljoin, urlparse
+
 import requests
 import urllib3
-from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
-import mimetypes
+from bs4.element import AttributeValueList, Tag
+from playwright.sync_api import (
+    BrowserContext,
+    Frame,
+    Page,
+    Response,
+    sync_playwright,
+)
+from playwright.sync_api import Route as PlaywrightRoute
 
 # Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+def _as_str(v: str | AttributeValueList | None) -> str:
+    """Narrow BS4's ``Tag.get(attr)`` value to ``str``.
+
+    HTML5 single-valued attributes always come back as ``str`` (or
+    ``None``); ``AttributeValueList`` is the multi-valued case (``class``
+    etc.). For URL- and text-bearing attrs we touch (``href``, ``src``,
+    ``style``, ``content``), the list case is unreachable; ``" ".join(v)``
+    is a safe fallback.
+    """
+    if v is None:
+        return ""
+    return v if isinstance(v, str) else " ".join(v)
+
+
 class WebsiteDownloader:
-    def __init__(self, url, output_dir, log_callback=None):
-        self.url = url
-        self.output_dir = output_dir
-        self.assets_dir = os.path.join(output_dir, "assets")
-        self.resource_cache = {}  # url -> local_path
-        self.network_resources = {}  # url -> {'body': bytes, 'content_type': str}
-        self.base_url = url
-        self.session = None  # Will be set with cookies from browser
-        self.log_callback = log_callback or (lambda msg: print(msg))
+    def __init__(
+        self,
+        url: str,
+        output_dir: str,
+        log_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        self.url: str = url
+        self.output_dir: str = output_dir
+        self.assets_dir: str = os.path.join(output_dir, "assets")
+        self.resource_cache: dict[str, str] = {}  # url -> local_path
+        self.network_resources: dict[str, dict[str, Any]] = {}
+        # url -> {'body': bytes, 'content_type': str}
+        self.base_url: str = url
+        self.session: requests.Session | None = None  # Will be set with cookies from browser
+        self.log_callback: Callable[[str], None] = log_callback or (lambda msg: print(msg))
 
         if os.path.exists(output_dir):
             shutil.rmtree(output_dir)
         os.makedirs(self.assets_dir)
 
-    def log(self, message):
+    def log(self, message: str) -> None:
         """Send log message to callback"""
         self.log_callback(message)
 
-    def _get_extension(self, url, content_type=""):
+    def _get_extension(self, url: str, content_type: str = "") -> str:
         """Get file extension from URL or content-type"""
         parsed = urlparse(url)
         path = parsed.path
@@ -50,7 +81,7 @@ class WebsiteDownloader:
 
         return ""
 
-    def _generate_filename(self, url, content_type=""):
+    def _generate_filename(self, url: str, content_type: str = "") -> str:
         """Generate a unique filename for a resource"""
         ext = self._get_extension(url, content_type)
         url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
@@ -64,7 +95,9 @@ class WebsiteDownloader:
 
         return f"{name}_{url_hash}{ext}"
 
-    def _save_resource(self, url, content, content_type=""):
+    def _save_resource(
+        self, url: str, content: bytes | str | None, content_type: str = ""
+    ) -> str | None:
         """Save a resource to disk and return relative path"""
         if url in self.resource_cache:
             return self.resource_cache[url]
@@ -82,7 +115,7 @@ class WebsiteDownloader:
         self.resource_cache[url] = rel_path
         return rel_path
 
-    def _download_fallback(self, url):
+    def _download_fallback(self, url: str) -> str | None:
         """Download a resource that wasn't captured during page load"""
         if url in self.resource_cache:
             return self.resource_cache[url]
@@ -96,6 +129,7 @@ class WebsiteDownloader:
             return url
 
         try:
+            assert self.session is not None  # set in process() before any asset rewrite
             response = self.session.get(url, timeout=15, verify=False)
             if response.status_code == 200:
                 content_type = response.headers.get("content-type", "")
@@ -106,7 +140,7 @@ class WebsiteDownloader:
 
         return None
 
-    def _get_resource(self, url, base=None):
+    def _get_resource(self, url: str, base: str | None = None) -> str | None:
         """Get a resource - from cache, network capture, or fallback download"""
         if (
             not url
@@ -138,10 +172,10 @@ class WebsiteDownloader:
         # Return original if all fails
         return url
 
-    def _rewrite_css_urls(self, css_content, css_url):
+    def _rewrite_css_urls(self, css_content: str, css_url: str) -> str:
         """Rewrite all url() references in CSS content"""
 
-        def replacer(match):
+        def replacer(match: re.Match[str]) -> str:
             full_match = match.group(0)
             url_content = match.group(1).strip()
 
@@ -164,11 +198,11 @@ class WebsiteDownloader:
 
         return re.sub(r"url\(\s*([^)]+)\s*\)", replacer, css_content)
 
-    def _detect_nextjs(self, soup):
+    def _detect_nextjs(self, soup: BeautifulSoup) -> bool:
         """Detect if page is built with Next.js even without #__next"""
         # Check for Next.js data script
         for script in soup.find_all("script"):
-            script_id = script.get("id", "")
+            script_id = _as_str(script.get("id", ""))
             script_text = script.string or ""
             if "__NEXT_DATA__" in script_id or "__NEXT_DATA__" in script_text:
                 return True
@@ -177,28 +211,33 @@ class WebsiteDownloader:
 
         # Check for Next.js script patterns in src
         for script in soup.find_all("script", src=True):
-            src = script["src"]
+            src = _as_str(script.get("src"))
             if "_next/" in src or "webpack" in src.lower():
                 return True
 
         # Check for Next.js link patterns
         for link in soup.find_all("link"):
-            href = link.get("href", "")
+            href = _as_str(link.get("href", ""))
             if "_next/" in href:
                 return True
 
         return False
 
-    def _fix_scroll_blocking(self, soup):
+    def _fix_scroll_blocking(self, soup: BeautifulSoup) -> None:
         """Fix CSS and HTML issues that block scrolling in offline viewing"""
         self.log("🔧 Corrigindo problemas de scroll para visualização offline...")
 
         # 1. Fix html element
         html_elem = soup.find("html")
-        if html_elem:
-            html_classes = html_elem.get("class", [])
-            if isinstance(html_classes, str):
-                html_classes = html_classes.split()
+        if isinstance(html_elem, Tag):
+            html_classes_raw = html_elem.get("class")
+            html_classes: list[str]
+            if html_classes_raw is None:
+                html_classes = []
+            elif isinstance(html_classes_raw, str):
+                html_classes = html_classes_raw.split()
+            else:
+                html_classes = list(html_classes_raw)
 
             # Remove Lenis-specific classes that block scroll
             lenis_classes = [
@@ -216,15 +255,20 @@ class WebsiteDownloader:
                 if c.lower() not in [lc.lower() for lc in lenis_classes]
             ]
             if new_classes != html_classes:
-                html_elem["class"] = new_classes
+                html_elem["class"] = AttributeValueList(new_classes)
                 self.log("   ✅ Removidas classes Lenis/Locomotive do html")
 
         # 2. Fix body element
         body = soup.find("body")
-        if body:
-            body_classes = body.get("class", [])
-            if isinstance(body_classes, str):
-                body_classes = body_classes.split()
+        if isinstance(body, Tag):
+            body_classes_raw = body.get("class")
+            body_classes: list[str]
+            if body_classes_raw is None:
+                body_classes = []
+            elif isinstance(body_classes_raw, str):
+                body_classes = body_classes_raw.split()
+            else:
+                body_classes = list(body_classes_raw)
 
             # Remove scroll-blocking classes
             blocking_classes = [
@@ -250,7 +294,7 @@ class WebsiteDownloader:
                 self.log("   ✅ Corrigida centralização vertical do body")
 
             if new_classes != body_classes:
-                body["class"] = new_classes
+                body["class"] = AttributeValueList(new_classes)
 
         # 3. Fix main containers that might have height: 100vh with overflow hidden
         problematic_selectors = [
@@ -275,7 +319,7 @@ class WebsiteDownloader:
 
         # 4. Remove/fix inline styles that block scroll
         for elem in soup.find_all(attrs={"style": True}):
-            style = elem["style"]
+            style = _as_str(elem["style"])
             if "overflow" in style.lower() and "hidden" in style.lower():
                 # Remove overflow: hidden from inline styles
                 new_style = re.sub(
@@ -368,7 +412,7 @@ class WebsiteDownloader:
         # 6. Remove Lenis/Locomotive script tags that might interfere
         scripts_removed = 0
         for script in soup.find_all("script"):
-            src = script.get("src", "") or ""
+            src = _as_str(script.get("src", "")) or ""
             script_text = script.string or ""
 
             # Check for smooth scroll libraries
@@ -385,7 +429,7 @@ class WebsiteDownloader:
         if scripts_removed > 0:
             self.log(f"   ✅ Removidos {scripts_removed} scripts de smooth scroll")
 
-    def _process_srcset(self, srcset, base=None):
+    def _process_srcset(self, srcset: str, base: str | None = None) -> str:
         """Process a srcset attribute and return the rewritten version"""
         if not srcset:
             return srcset
@@ -417,7 +461,7 @@ class WebsiteDownloader:
 
         return ", ".join(new_parts) if new_parts else srcset
 
-    def _extract_iframe_content(self, page):
+    def _extract_iframe_content(self, page: Page) -> tuple[str | None, bool]:
         """
         Check if the page content is inside an iframe (common in site builders like Aura, Webflow, etc.)
         and extract the actual content if found.
@@ -516,7 +560,7 @@ class WebsiteDownloader:
 
         return None, False
 
-    def _score_frame_content(self, content):
+    def _score_frame_content(self, content: str | None) -> int:
         """
         Heuristic score for how likely a frame holds the *real* site content
         instead of being a loader / wrapper / tracking iframe.
@@ -573,10 +617,12 @@ class WebsiteDownloader:
 
         return score
 
-    def _wait_for_real_content_frame(self, page, max_wait_ms=15000, poll_ms=1000):
+    def _wait_for_real_content_frame(
+        self, page: Page, max_wait_ms: int = 15000, poll_ms: int = 1000
+    ) -> tuple[Frame, str] | None:
         """Poll page.frames until we find a frame that scores well as real content."""
         elapsed = 0
-        best_seen = None  # (score, frame, content)
+        best_seen: tuple[int, Frame, str] | None = None  # (score, frame, content)
 
         while elapsed <= max_wait_ms:
             for frame in page.frames:
@@ -608,7 +654,7 @@ class WebsiteDownloader:
             return best_seen[1], best_seen[2]
         return None
 
-    def _apply_basic_stealth(self, context):
+    def _apply_basic_stealth(self, context: BrowserContext) -> None:
         """
         Reduce obvious automation fingerprints that trigger anti-bot pages
         on some hosts when running in cloud/datacenter environments.
@@ -626,7 +672,7 @@ class WebsiteDownloader:
             window.chrome = window.chrome || { runtime: {} };
         """)
 
-    def _is_challenge_page(self, page):
+    def _is_challenge_page(self, page: Page) -> bool:
         """Detect common anti-bot/challenge pages."""
         try:
             title = (page.title() or "").lower()
@@ -659,14 +705,14 @@ class WebsiteDownloader:
         except Exception:
             return False
 
-    def _navigate_with_retries(self, page):
+    def _navigate_with_retries(self, page: Page) -> None:
         """Navigate with multiple strategies for heavy/protected websites."""
-        attempts = [
+        attempts: list[tuple[Literal["domcontentloaded", "load", "networkidle"], int]] = [
             ("domcontentloaded", 60000),
             ("load", 80000),
             ("networkidle", 90000),
         ]
-        last_error = None
+        last_error: Exception | None = None
 
         for wait_until, timeout in attempts:
             try:
@@ -686,7 +732,7 @@ class WebsiteDownloader:
         if last_error:
             raise last_error
 
-    def process(self):
+    def process(self) -> bool:
         with sync_playwright() as p:
             self.log("🚀 Iniciando navegador...")
             # Launch with reduced memory footprint
@@ -724,7 +770,7 @@ class WebsiteDownloader:
             # speeds up captures and avoids holding huge video buffers in RAM.
             BLOCKED_RESOURCE_TYPES = {"media", "websocket", "eventsource"}
 
-            def route_filter(route):
+            def route_filter(route: PlaywrightRoute) -> None:
                 try:
                     if route.request.resource_type in BLOCKED_RESOURCE_TYPES:
                         return route.abort()
@@ -743,7 +789,7 @@ class WebsiteDownloader:
             # Skip caching of huge bodies that don't fit our offline model
             MAX_RESOURCE_BYTES = 8 * 1024 * 1024  # 8 MB per asset
 
-            def capture_response(response):
+            def capture_response(response: Response) -> None:
                 try:
                     url = response.url
                     if response.status != 200:
@@ -863,8 +909,8 @@ class WebsiteDownloader:
         # Remove any remaining iframes that are wrappers (like Aura preview frames)
         for iframe in soup.find_all("iframe"):
             # Keep only essential iframes (videos, maps, etc.)
-            src = iframe.get("src", "") or ""
-            srcdoc = iframe.get("srcdoc", "")
+            src = _as_str(iframe.get("src", "")) or ""
+            srcdoc = _as_str(iframe.get("srcdoc", ""))
 
             # Remove preview/wrapper iframes
             if srcdoc or "preview" in str(iframe.get("class", "")).lower():
@@ -873,7 +919,7 @@ class WebsiteDownloader:
         # 1. Process external stylesheets
         self.log("🎨 Processando stylesheets...")
         for link in soup.find_all("link", rel="stylesheet"):
-            href = link.get("href")
+            href = _as_str(link.get("href"))
             if not href or href.startswith("data:"):
                 continue
 
@@ -891,6 +937,7 @@ class WebsiteDownloader:
             if not css_content:
                 # Fallback download
                 try:
+                    assert self.session is not None  # set above
                     response = self.session.get(abs_url, timeout=15, verify=False)
                     if response.status_code == 200:
                         css_content = response.text
@@ -916,7 +963,7 @@ class WebsiteDownloader:
         # 3. Process scripts
         self.log("📝 Processando scripts...")
         for script in soup.find_all("script", src=True):
-            src = script.get("src")
+            src = _as_str(script.get("src"))
             if not src or src.startswith("data:"):
                 continue
 
@@ -933,7 +980,7 @@ class WebsiteDownloader:
             ["img", "source", "video", "audio", "picture", "input"]
         ):
             # Process src
-            src = elem.get("src")
+            src = _as_str(elem.get("src"))
 
             # Check lazy loading attributes first
             for attr in [
@@ -945,12 +992,12 @@ class WebsiteDownloader:
                 "data-bg",
             ]:
                 if elem.get(attr):
-                    lazy_src = elem[attr]
+                    lazy_src = _as_str(elem[attr])
                     local_path = self._get_resource(lazy_src)
                     if local_path and local_path != lazy_src:
                         elem["src"] = local_path
                         del elem[attr]
-                        src = None  # Already handled
+                        src = ""  # Already handled
                     break
 
             if src and not src.startswith("data:"):
@@ -959,18 +1006,18 @@ class WebsiteDownloader:
                     elem["src"] = local_path
 
             # Process srcset
-            srcset = elem.get("srcset")
+            srcset = _as_str(elem.get("srcset"))
             if srcset:
                 elem["srcset"] = self._process_srcset(srcset)
 
             # Process data-srcset
-            data_srcset = elem.get("data-srcset")
+            data_srcset = _as_str(elem.get("data-srcset"))
             if data_srcset:
                 elem["data-srcset"] = self._process_srcset(data_srcset)
 
             # Process poster for video
             if elem.name == "video" and elem.get("poster"):
-                poster = elem["poster"]
+                poster = _as_str(elem["poster"])
                 local_path = self._get_resource(poster)
                 if local_path and local_path != poster:
                     elem["poster"] = local_path
@@ -978,22 +1025,21 @@ class WebsiteDownloader:
         # 5. Process inline style attributes
         self.log("🔗 Processando atributos de estilo inline...")
         for elem in soup.find_all(attrs={"style": True}):
-            style = elem["style"]
+            style = _as_str(elem["style"])
             if "url(" in style:
                 elem["style"] = self._rewrite_css_urls(style, self.base_url)
 
         # 6. Process favicons and other link tags with URLs
         for link in soup.find_all("link"):
             if link.get("href") and link.get("rel"):
-                rel = link["rel"]
-                if isinstance(rel, list):
-                    rel = " ".join(rel)
+                rel_raw = link["rel"]
+                rel = " ".join(rel_raw) if isinstance(rel_raw, list) else _as_str(rel_raw)
                 if (
                     "icon" in rel.lower()
                     or "apple-touch" in rel.lower()
                     or "manifest" in rel.lower()
                 ):
-                    href = link["href"]
+                    href = _as_str(link["href"])
                     if not href.startswith("data:"):
                         local_path = self._get_resource(href)
                         if local_path and local_path != href:
@@ -1001,9 +1047,9 @@ class WebsiteDownloader:
 
         # 7. Process meta tags with image URLs (og:image, etc.)
         for meta in soup.find_all("meta", attrs={"content": True}):
-            prop = meta.get("property", "") or meta.get("name", "")
+            prop = _as_str(meta.get("property", "")) or _as_str(meta.get("name", ""))
             if "image" in prop.lower():
-                content = meta["content"]
+                content = _as_str(meta["content"])
                 if (
                     content
                     and not content.startswith("data:")
@@ -1015,7 +1061,7 @@ class WebsiteDownloader:
 
         # 8. Process background images in divs and other elements
         for elem in soup.find_all(attrs={"data-background": True}):
-            bg = elem["data-background"]
+            bg = _as_str(elem["data-background"])
             if bg and not bg.startswith("data:"):
                 local_path = self._get_resource(bg)
                 if local_path and local_path != bg:
@@ -1025,7 +1071,7 @@ class WebsiteDownloader:
         # Convert "/" to "#" or "index.html" so they don't break when opened offline
         self.log("🔗 Corrigindo links de navegação...")
         for a in soup.find_all("a", href=True):
-            href = a["href"]
+            href = _as_str(a["href"])
             # Convert root links to stay on page
             if href == "/":
                 a["href"] = "#"
@@ -1069,7 +1115,7 @@ class WebsiteDownloader:
             ]
 
             for script in soup.find_all("script"):
-                src = script.get("src", "")
+                src = _as_str(script.get("src", ""))
                 script_text = script.string or ""
 
                 # Check if this is a safe third-party script
@@ -1135,7 +1181,7 @@ class WebsiteDownloader:
                 rel=lambda r: r
                 and any(x in r for x in ["preload", "prefetch", "modulepreload"]),
             ):
-                href = link.get("href", "")
+                href = _as_str(link.get("href", ""))
                 if "_next/" in href or (href.startswith("assets/") and "-" in href):
                     link.decompose()
                     links_removed += 1
@@ -1169,7 +1215,7 @@ class WebsiteDownloader:
 
         return True
 
-    def _scroll_page(self, page):
+    def _scroll_page(self, page: Page) -> None:
         """Scroll the page to trigger lazy loading"""
         try:
             # First, try to disable smooth scroll libraries (Lenis, Locomotive, etc.)
@@ -1276,7 +1322,7 @@ class WebsiteDownloader:
             self.log(f"⚠️ Erro no scroll: {e}")
 
 
-def get_site_name(url):
+def get_site_name(url: str) -> str:
     """Extract a clean site name from URL for the zip filename"""
     parsed = urlparse(url)
     # Get domain without www
@@ -1290,7 +1336,7 @@ def get_site_name(url):
     return clean_name
 
 
-def zip_directory(folder_path, output_path):
+def zip_directory(folder_path: str, output_path: str) -> str:
     """Create a zip file from a directory"""
     base_name = output_path.replace(".zip", "")
     shutil.make_archive(base_name, "zip", folder_path)
