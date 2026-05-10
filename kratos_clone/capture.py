@@ -603,7 +603,6 @@ class HardenedCapture:
                 self._authed_skipped += 1
                 if self._authed_skipped == 1:
                     self.logger.warning(
-                    self.logger.warning(
                         "authed_response_skipped",
                         url=url,
                         reason="authorization_header_present",
@@ -616,7 +615,6 @@ class HardenedCapture:
             if "octet-stream" in ctype.lower() and not self._octet_stream_warned:
                 self._octet_stream_warned = True
                 self.logger.warning(
-                self.logger.warning(
                     "octet_stream_captured",
                     url=url,
                     reason="opaque_content_type",
@@ -628,7 +626,6 @@ class HardenedCapture:
                 # First-drop warning: makes the cap-hit visible during capture
                 # (operators previously had to inspect manifest.json post-hoc).
                 if self._asset_count_dropped == 1:
-                    self.logger.warning(
                     self.logger.warning(
                         "asset_count_cap_reached",
                         url=url,
@@ -645,7 +642,6 @@ class HardenedCapture:
                 if self._total_asset_bytes + len(body) > max_total:
                     self._asset_count_dropped += 1
                     if self._asset_count_dropped == 1:
-                        self.logger.warning(
                         self.logger.warning(
                             "asset_bytes_cap_reached",
                             url=url,
@@ -695,8 +691,8 @@ class HardenedCapture:
                 "scroll_pass_start",
                 pass_num=1,
                 of=self.cfg.scroll_passes,
-            self.logger.info(
-                "scroll_pass_start", pass_num=1, of=self.cfg.scroll_passes, direction="forward", speed="fast"
+                direction="forward",
+                speed="fast",
             )
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_fast)):
                 if over_budget():
@@ -711,8 +707,8 @@ class HardenedCapture:
                 "scroll_pass_start",
                 pass_num=2,
                 of=self.cfg.scroll_passes,
-            self.logger.info(
-                "scroll_pass_start", pass_num=2, of=self.cfg.scroll_passes, direction="forward", speed="slow"
+                direction="forward",
+                speed="slow",
             )
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_slow)):
@@ -728,8 +724,8 @@ class HardenedCapture:
                 "scroll_pass_start",
                 pass_num=3,
                 of=self.cfg.scroll_passes,
-            self.logger.info(
-                "scroll_pass_start", pass_num=3, of=self.cfg.scroll_passes, direction="backward", speed="slow"
+                direction="backward",
+                speed="slow",
             )
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(h, -vh, -int(vh * self.cfg.scroll_jump_ratio_slow)):
