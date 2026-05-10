@@ -70,11 +70,11 @@ BOOT OK — 10 routes
 
 | ID | Severity | Title | Evidence | Status |
 |---|---|---|---|---|
-| B-1 | 🔴 BLOCKER | `requirements.txt` missing 4 runtime deps + 4 version drifts | `app.py:14` (structlog), `app.py:18` (flask-limiter), `app.py:591/636` (openai/pillow lazy), `requirements.txt` vs `uv.lock` | **FIXED** in this PR |
+| B-1 | 🔴 BLOCKER | `requirements.txt` missing 4 runtime deps + 4 version drifts | `app.py:14` (structlog), `app.py:16` (flask-limiter), `app.py:591/637` (openai/pillow lazy), `requirements.txt` vs `uv.lock` | **FIXED** in this PR |
 | B-2 | 🔴 BLOCKER | No `.env.example`; `OPENAI_API_KEY` undocumented and fails per-request | `personalize/openai_client.py:80`, `render.yaml:6-8` | **FIXED** in this PR |
 | M-1 | 🟡 MAJOR  | `CLAUDE.md` "Known issues" stale (claims 7 P2 items remain, actually 0) | `CLAUDE.md:109-117`, `docs/AUDIT.md` (all P2-1..P2-12 struck-through) | DEFERRED |
 | M-2 | 🟡 MAJOR  | `WORKFLOW.md` claims Stages 1, 3, 6 aspirational — all shipped | `docs/WORKFLOW.md:6-9` | DEFERRED |
-| M-3 | 🟡 MAJOR  | Transitive CVEs in `cryptography v41.0.7` (6 CVEs, pulled by openai) | `pip-audit` output | DEFERRED |
+| M-3 | 🟡 MAJOR  | Transitive CVEs: `cryptography v41.0.7` (6 CVEs) + `urllib3 2.6.2` (CVE-2026-21441, decompression-bomb in streaming redirects) | `pip-audit` output, OSV scanner (CodeRabbit) | DEFERRED to dedicated dep-bump PR |
 | M-4 | 🟡 MAJOR  | `RATE_LIMIT_STORAGE_URI=memory://` default; per-worker buckets if `--workers >1` | `app.py:237`, `entrypoint.sh:15` | DEFERRED |
 | M-5 | 🟡 MAJOR  | Playwright 1.57 launches Chrome for Testing instead of Chromium — memory regression on 512 MB tier | [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489), `pyproject.toml:14`, `entrypoint.sh:9-12` | DEFERRED |
 | N-1 | 🟢 MINOR  | `CLAUDE.md` claims "52 tests" — actual 210 | `CLAUDE.md:70`, `pytest -q` output | DEFERRED |
@@ -143,13 +143,15 @@ This file is now a build artifact — regenerable from `uv.lock` whenever deps c
 
 **Recommended follow-up:** single doc-edit PR (~30 min) refreshing CLAUDE.md "Known issues" + WORKFLOW.md status header + CLAUDE.md test count.
 
-### M-3 — `cryptography v41.0.7` transitive CVEs (DEFERRED)
+### M-3 — Transitive CVEs in `cryptography v41.0.7` and `urllib3 2.6.2` (DEFERRED)
 
 `pip-audit --vulnerability-service osv` reports 6 CVEs in cryptography 41.0.7 (PYSEC-2024-225, CVE-2023-50782, CVE-2024-0727, GHSA-h4gh-qq45-vh27, CVE-2026-26007, CVE-2026-34073). Pulled transitively by `openai`. Soft-gated in CI (`pip-audit … || true`).
 
-No immediate exploit path — cryptography is used by openai for TLS/JWT, all interactions are with api.openai.com (trusted). But the vulns are public and tooling will keep flagging them.
+CodeRabbit's OSV scanner additionally flagged `urllib3==2.6.2` (CVE-2026-21441 / GHSA-38jv-5279-wg99): HIGH-severity decompression-bomb when following HTTP redirects with `preload_content=False`. Pulled transitively by `requests`. urllib3 2.6.3+ contains the fix.
 
-**Recommended follow-up:** dedicated dep-bump PR. `uv sync --upgrade-package cryptography` then re-export requirements.txt. Verify `mypy`/`pytest` pass. Likely also pulls in newer openai SDK transitives.
+No immediate exploit path — cryptography is used by openai for TLS/JWT (all interactions with api.openai.com, trusted); urllib3's redirect-following decompression issue requires a malicious server in the redirect chain, which `kratos_clone/capture.py` does intentionally expose by visiting arbitrary user-supplied URLs. Worth fixing soon for the capture path; not a deploy blocker.
+
+**Recommended follow-up:** dedicated dep-bump PR. `uv lock --upgrade-package cryptography --upgrade-package urllib3` then re-export `requirements.txt`. Verify mypy/pytest pass. Likely also pulls in newer openai SDK transitives.
 
 ### M-4 — In-memory rate-limit storage (DEFERRED)
 
@@ -259,7 +261,7 @@ If `/api/personalize/structure` returns 5xx → check `OPENAI_API_KEY` in Render
 
 1. **Doc refresh PR** — M-1 + M-2 + N-1 + N-2. ~30 min. Single-author doc edits.
 2. **Dockerfile hardening PR** — N-6 + N-7 (+ optionally N-8). ~30 min. Add HEALTHCHECK + USER.
-3. **Cryptography bump PR** — M-3. `uv sync --upgrade-package cryptography` + regen requirements.txt. Verify CI green.
+3. **Dependency bump PR** — M-3. `uv lock --upgrade-package cryptography --upgrade-package urllib3` + regen requirements.txt. Verify CI green.
 4. **Memory investigation issue** — M-5. Profile a heavy-SPA capture under 512 MB constraint. Outcomes: keep current setup, set `--ipc=host`, or upgrade tier.
 5. **Rate-limit guard** — M-4. Add boot-time warning if `--workers >1` and storage is `memory://`.
 
