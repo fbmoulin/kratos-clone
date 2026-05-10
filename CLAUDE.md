@@ -29,7 +29,7 @@ The original Flask UI (`app.py` + `downloader.py`) is preserved and still functi
 2. **`ROADMAP.md`** — phased plan
 3. **`TODO.md`** — actionable next-sprint items
 4. **This file** — conventions + commands
-5. **`docs/WORKFLOW.md`** — target architecture (note: Stages 1, 6 aspirational)
+5. **`docs/WORKFLOW.md`** — target architecture (all 6 stages shipped as of 2026-04-27)
 
 ---
 
@@ -67,7 +67,7 @@ uv run ruff format --check kratos_clone/ scripts/ app.py
 
 ### Tests
 ```bash
-uv run pytest -q                    # 52 tests, ~0.6s
+uv run pytest -q                    # 210 passed + 2 skipped, ~3s (live OpenAI gated)
 uv run pytest tests/test_post.py -v # specific file
 ```
 
@@ -119,12 +119,16 @@ gh run list --limit 5
 
 ## Known issues
 
-> ✅ All 9 P1 audit findings closed. P0 was zero from the start.
-> P2-11 closed by Phase 4 (personalize sanitize). Remaining P2: 7 items.
-> P3: ~13. See `docs/AUDIT.md` for the full list and `ROADMAP.md` for phasing.
-> Top P2 candidates next: P2-1 asset_filename regex, P2-8 hardcoded scorecard,
-> P2-9 unmeasured "+70%" claim, P2-10 "+6650% CSS" attribution, P2-12 authed
-> response capture redaction.
+> ✅ All 9 P1 audit findings closed. ✅ All 12 P2 closed as of 2026-05-10.
+> P0 was zero from the start. Remaining open: **~13 P3** in `docs/AUDIT.md`
+> (low / informational — e.g. unused `network_resources` field, CI action
+> SHA-pinning, dep upper-bounds).
+>
+> A second pre-deploy audit ran 2026-05-10 (`docs/PRE_DEPLOY_AUDIT_2026-05-10.md`)
+> with separate severity scale: both BLOCKERs fixed in PR #21 + the urllib3
+> CVE within M-3 also bumped there. Remaining: 4 MAJOR + 9 MINOR
+> deferred (cryptography 41 bump, doc drift, in-memory rate-limit storage,
+> Playwright 1.57 memory regression, Dockerfile hardening, etc.).
 
 ---
 

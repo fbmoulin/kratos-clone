@@ -171,9 +171,9 @@ exists yet.** Highest-priority Phase 1 item — see `ROADMAP.md`.
 1. **`docs/AUDIT.md`** — current state of the codebase, prioritized findings
 2. **`ROADMAP.md`** — phased plan to address audit + extend functionality
 3. **`TODO.md`** — actionable next-sprint items
-4. **`docs/WORKFLOW.md`** — 6-stage pipeline architecture (Stages 1, 6 are aspirational)
+4. **`docs/WORKFLOW.md`** — 6-stage pipeline architecture (all 6 stages shipped 2026-04-27)
 5. **`docs/PROMPT_v2.md`** — LLM prompt template if extracting via Claude/Opus
-6. **`docs/PERSONALIZATION.md`** — proposed OpenAI personalization layer (spec only)
+6. **`docs/PERSONALIZATION.md`** — OpenAI personalization layer (shipped 2026-04-27)
 7. **`CLAUDE.md`** — guidance for Claude Code agents working on this repo
 
 ---

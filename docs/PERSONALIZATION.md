@@ -2,18 +2,19 @@
 
 > Last stage of the pipeline: take a cloned site + extracted design system + a user brand brief → output a personalized HTML the user can deploy. Backed by deep research on production architectures (Aura, Framer, v0, Webflow AI), OpenAI 2026 API surface, and DTCG W3C 2025.10 spec.
 
-> **⚠️ STATUS: SPEC ONLY — NOT YET IMPLEMENTED.**
+> **✅ STATUS: SHIPPED 2026-04-27** (Phase 4 in `ROADMAP.md`).
 >
-> This document is an architecture proposal. There is **no `personalize.py`,
-> no OpenAI integration, no `slots[]` extractor** in the repo today. The code
-> skeletons below are reference implementations for the eventual build, not
-> working code.
+> Implementation lives in `personalize/` (slots, sanitize, openai_client,
+> patcher, pipeline, cli) with 89 dedicated tests + 2 gated live integration
+> tests. Audit P2-11 (prompt-injection / image-XSS hardening) closed by
+> `personalize/sanitize.py`.
 >
-> Tracked as Phase 4 in `ROADMAP.md`. See `docs/AUDIT.md` § P2-11 for prompt-injection
-> mitigations that must be addressed in the implementation.
->
-> Cost / latency budget cited (~$0.32, ~25-30s) is a forecast based on 2026 pricing
-> at `platform.openai.com/docs/pricing` — verify before committing to a budget.
+> **Cost reconciliation (2026-04-27 live test):** text-only path
+> (`structure_brief` + `personalize`) measured at ~$0.05/run across 2 live
+> runs ($0.105 total). The $0.32 forecast below assumes 3 hero/feature
+> illustrations via gpt-image-1 medium ($0.07 × 3 = $0.21 image gen) on top
+> of the ~$0.105 text. Verify against current `platform.openai.com/docs/pricing`
+> before committing to a budget — pricing has historically changed quarterly.
 
 ---
 
@@ -31,7 +32,7 @@
 | Avatars | **CSS gradient + initials** (NO synthetic faces) | EU AI Act Art. 50 + OpenAI usage policies on testimonials |
 | Orchestration | **Deterministic pipeline** (NOT agent loop) | 1-2 calls, ~$0.32/run, ~25-30s · agent loops are 5-15× costlier for fixed workflows |
 
-**Budget per personalization run:** ~$0.32, ~25-30 s end-to-end with parallel image generation. Comfortable headroom under <$1, <60s targets.
+**Budget per personalization run:** ~$0.32, ~25-30 s end-to-end with parallel image generation (forecast based on 2026-04-27 pricing; text-only portion measured at ~$0.05/run during Phase 4 live validation). Comfortable headroom under <$1, <60s targets — enforced by the hard $1.00 budget cap in `OpenAIBrandClient`.
 
 ---
 

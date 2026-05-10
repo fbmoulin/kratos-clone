@@ -11,11 +11,11 @@
 
 ## Executive summary
 
-| Severity | Count | This PR |
+| Severity | Count | Status |
 |---|---|---|
-| 🔴 BLOCKER | 2 | **Both fixed.** |
-| 🟡 MAJOR  | 5 | 1 partially fixed (urllib3 within M-3); 4 deferred. |
-| 🟢 MINOR  | 9 | Documented, deferred. |
+| 🔴 BLOCKER | 2 | **Both fixed** in PR #21. |
+| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 split: urllib3 fixed in PR #21; cryptography deferred. M-4, M-5 deferred. |
+| 🟢 MINOR  | 9 | N-1, N-2 closed in follow-up docs PR. N-3 resolved via B-2 fix. N-4..N-9 deferred. |
 
 The container deploy via Render → Docker → `requirements.txt` was broken today: `requirements.txt` was missing 4 of the 11 declared runtime dependencies, including two (`structlog`, `flask-limiter`) imported at module level in `app.py`. `import app` raised `ModuleNotFoundError` before gunicorn could bind, so the service would fail health-check before serving a single request. The second BLOCKER (no `.env.example`) meant operators had no reference for the 24 env vars the app reads, including `OPENAI_API_KEY` — which fails silently per-request, not at boot.
 
@@ -72,13 +72,13 @@ BOOT OK — 10 routes
 |---|---|---|---|---|
 | B-1 | 🔴 BLOCKER | `requirements.txt` missing 4 runtime deps + 4 version drifts | `app.py:14` (structlog), `app.py:16` (flask-limiter), `app.py:591/637` (openai/pillow lazy), `requirements.txt` vs `uv.lock` | **FIXED** in this PR |
 | B-2 | 🔴 BLOCKER | No `.env.example`; `OPENAI_API_KEY` undocumented and fails per-request | `personalize/openai_client.py:80`, `render.yaml:6-8` | **FIXED** in this PR |
-| M-1 | 🟡 MAJOR  | `CLAUDE.md` "Known issues" stale (claims 7 P2 items remain, actually 0) | `CLAUDE.md:109-117`, `docs/AUDIT.md` (all P2-1..P2-12 struck-through) | DEFERRED |
-| M-2 | 🟡 MAJOR  | `WORKFLOW.md` claims Stages 1, 3, 6 aspirational — all shipped | `docs/WORKFLOW.md:6-9` | DEFERRED |
+| ~~M-1~~ | 🟡 MAJOR  | `CLAUDE.md` "Known issues" stale (claims 7 P2 items remain, actually 0) | `CLAUDE.md:109-117`, `docs/AUDIT.md` (all P2-1..P2-12 struck-through) | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — CLAUDE.md "Known issues" rewritten to reflect all P2 closed + pre-deploy-audit summary |
+| ~~M-2~~ | 🟡 MAJOR  | `WORKFLOW.md` claims Stages 1, 3, 6 aspirational — all shipped | `docs/WORKFLOW.md:6-9` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — status banner updated to "all 6 stages shipped 2026-04-27" |
 | M-3 | 🟡 MAJOR  | Transitive CVEs: `urllib3 2.6.2` (CVE-2026-21441) bumped to 2.7.0 in this PR; `cryptography v41.0.7` (6 CVEs) still pending | OSV scanner (CodeRabbit), `pip-audit` output | urllib3 **FIXED** in this PR; cryptography DEFERRED |
 | M-4 | 🟡 MAJOR  | `RATE_LIMIT_STORAGE_URI=memory://` default; per-worker buckets if `--workers >1` | `app.py:237`, `entrypoint.sh:15` | DEFERRED |
 | M-5 | 🟡 MAJOR  | Playwright 1.57 launches Chrome for Testing instead of Chromium — memory regression on 512 MB tier | [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489), `pyproject.toml:14`, `entrypoint.sh:9-12` | DEFERRED |
-| N-1 | 🟢 MINOR  | `CLAUDE.md` claims "52 tests" — actual 210 | `CLAUDE.md:70`, `pytest -q` output | DEFERRED |
-| N-2 | 🟢 MINOR  | "$0.32 per run" cost claim unverified | `docs/PERSONALIZATION.md`, `docs/HANDOFF.md`, `CLAUDE.md:167` | DEFERRED |
+| ~~N-1~~ | 🟢 MINOR  | `CLAUDE.md` claims "52 tests" — actual 210 | `CLAUDE.md:70`, `pytest -q` output | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — line updated to "210 passed + 2 skipped, ~3s" |
+| ~~N-2~~ | 🟢 MINOR  | "$0.32 per run" cost claim unverified | `docs/PERSONALIZATION.md`, `docs/HANDOFF.md`, `CLAUDE.md:167` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — annotated with 2026-04-27 live measurement (~$0.05/run text-only; $0.32 forecast assumes 3 images) |
 | N-3 | 🟢 MINOR  | 20+ `KCD_*` env vars undocumented for operators | `kratos_clone/capture.py:185-228` | **RESOLVED via B-2 fix** |
 | N-4 | 🟢 MINOR  | No CORS/CSRF on POST endpoints | `app.py` (no `flask-cors` import) | DEFERRED — intent-dependent |
 | N-5 | 🟢 MINOR  | Janitor thread `daemon=True`; SIGTERM during cleanup may leak | `app.py:243` | DEFERRED — idempotent rmtree mitigates |
