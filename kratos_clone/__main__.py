@@ -48,7 +48,7 @@ def main() -> int:
         scroll_passes=max(1, min(3, args.passes)),
     )
 
-    cap = HardenedCapture(args.url, args.output_dir, cfg, log=lambda m: print(m, flush=True))
+    cap = HardenedCapture(args.url, args.output_dir, cfg)
     manifest = asyncio.run(cap.run())
     print()
     print("=" * 60)

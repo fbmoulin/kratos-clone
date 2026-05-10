@@ -24,12 +24,14 @@ import os
 import re
 import time
 import urllib.parse
-from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+import structlog
 from playwright.async_api import Page, Response, Route, async_playwright
+
+logger = structlog.get_logger("kratos_clone.capture")
 
 # ── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_VIEWPORT = (1920, 1080)
@@ -280,17 +282,13 @@ def asset_filename(url: str) -> str:
     return fname
 
 
-# ── Logger callback type ─────────────────────────────────────────────────────
-LogCallback = Callable[[str], None] | None
-
-
 # ── Main capture ─────────────────────────────────────────────────────────────
 class HardenedCapture:
     """Capture an SPA marketing site with maximum recall.
 
     Usage:
         cfg = CaptureConfig()
-        cap = HardenedCapture(url, output_dir, cfg, log=print)
+        cap = HardenedCapture(url, output_dir, cfg)
         manifest = await cap.run()
     """
 
@@ -299,7 +297,6 @@ class HardenedCapture:
         url: str,
         output_dir: str | Path,
         cfg: CaptureConfig | None = None,
-        log: LogCallback = None,
     ):
         """
         Initialize a HardenedCapture instance for the given URL and prepare output paths and internal capture state.
@@ -308,16 +305,15 @@ class HardenedCapture:
             url (str): Target page URL to capture.
             output_dir (str | Path): Directory where capture outputs and an `assets/` subdirectory will be written.
             cfg (CaptureConfig | None): Optional capture configuration; a default CaptureConfig is created when omitted.
-            log (LogCallback | None): Optional logging callback that receives single-string messages; no-op if omitted.
 
         Behavior:
-            Sets instance attributes for capture tracking (e.g., captured_assets, network_resources, errors), disk and asset-cap accounting (_total_asset_bytes, _asset_count_dropped, _asset_write_failed), special-case counters and flags used by capture patches (shadow_skipped_closed, _authed_skipped, _octet_stream_warned, scroll_budget_exceeded), and a set for pending asynchronous asset write tasks (_pending_writes).
+            Sets instance attributes for capture tracking (e.g., captured_assets, network_resources, errors), disk and asset-cap accounting (_total_asset_bytes, _asset_count_dropped, _asset_write_failed), special-case counters and flags used by capture patches (shadow_skipped_closed, _authed_skipped, _octet_stream_warned, scroll_budget_exceeded), and a set for pending asynchronous asset write tasks (_pending_writes). Binds a structlog logger with ``url`` and ``output_dir`` context that auto-attaches to every event from this instance.
         """
         self.url = url
         self.output_dir = Path(output_dir)
         self.assets_dir = self.output_dir / "assets"
         self.cfg = cfg or CaptureConfig()
-        self._log = log or (lambda m: None)
+        self.logger = logger.bind(url=url, output_dir=str(self.output_dir))
         self.captured_assets: dict[str, str] = {}  # url → relative filename
         self.network_resources: list[dict[str, Any]] = []
         self.errors: list[str] = []
@@ -333,9 +329,6 @@ class HardenedCapture:
         self._octet_stream_warned: bool = False  # one-shot warning flag
         # P2-2: scroll budget exceeded flag
         self.scroll_budget_exceeded: bool = False
-
-    def log(self, msg: str) -> None:
-        self._log(msg)
 
     async def run(self) -> dict[str, Any]:
         """
@@ -380,12 +373,12 @@ class HardenedCapture:
             # Patch A — IntersectionObserver pre-fire (BEFORE first navigation)
             if self.cfg.use_io_polyfill:
                 await context.add_init_script(PATCH_A_IO_PREFIRE)
-                self.log("🧬 Patch A: IntersectionObserver pre-fire polyfill injected")
+                self.logger.info("patch_a_injected", patch="intersection_observer_prefire")
 
             # Patch D helpers
             if self.cfg.use_shadow_walker:
                 await context.add_init_script(PATCH_D_SHADOW_DOM_HELPERS)
-                self.log("🧬 Patch D: Shadow DOM walker helpers injected")
+                self.logger.info("patch_d_injected", patch="shadow_dom_walker")
 
             # Block analytics noise (saves bandwidth + reduces network-idle delay)
             if self.cfg.block_analytics:
@@ -404,12 +397,12 @@ class HardenedCapture:
             page.on("pageerror", lambda e: self.errors.append(f"pageerror: {e}"))
 
             try:
-                self.log(f"🌐 Loading {self.url}...")
+                self.logger.info("page_load_start")
                 # Patch B — networkidle is the right choice here, NOT domcontentloaded
                 await page.goto(self.url, wait_until="networkidle", timeout=self.cfg.nav_timeout_ms)
-                self.log("✓ Page loaded (networkidle)")
+                self.logger.info("page_loaded", wait_until="networkidle")
             except Exception as e:
-                self.log(f"⚠️  networkidle timeout, falling back to domcontentloaded: {e}")
+                self.logger.warning("networkidle_timeout_fallback", error=str(e))
                 try:
                     await page.goto(
                         self.url,
@@ -422,13 +415,13 @@ class HardenedCapture:
 
             # Patch B — DOM-stable predicate
             try:
-                self.log(f"⏳ Waiting for DOM to stabilize ({self.cfg.dom_stable_ms} ms)...")
+                self.logger.info("dom_stable_wait_start", timeout_ms=self.cfg.dom_stable_ms)
                 await page.wait_for_function(
                     DOM_STABLE_FUNC, arg=self.cfg.dom_stable_ms, timeout=30000
                 )
-                self.log("✓ DOM stable")
+                self.logger.info("dom_stable_reached")
             except Exception as e:
-                self.log(f"⚠️  DOM-stable wait timed out, proceeding: {e}")
+                self.logger.warning("dom_stable_timeout", error=str(e))
 
             # Disable Lenis if present
             if self.cfg.disable_lenis:
@@ -439,7 +432,7 @@ class HardenedCapture:
                     }
                     if (window.Lenis) { window.Lenis = null; }
                 """)
-                self.log("🧬 Lenis smooth-scroll disabled (if present)")
+                self.logger.info("lenis_disabled")
 
             # Patch C — Three-pass scroll
             await self._three_pass_scroll(page)
@@ -459,7 +452,7 @@ class HardenedCapture:
             # Patch E — Computed-style snapshot
             styles_json = None
             if self.cfg.capture_computed_styles:
-                self.log("🎨 Capturing computed styles...")
+                self.logger.info("computed_styles_capture_start")
                 styles_json = await self._capture_computed_styles(page)
 
             # P1-B fix: explicitly wait for pending response-handler tasks before
@@ -468,7 +461,7 @@ class HardenedCapture:
             # every tracked task; the timeout caps total wait at 10s in case a
             # response body() never resolves.
             if self._pending_writes:
-                self.log(f"⏳ Awaiting {len(self._pending_writes)} pending asset write(s)...")
+                self.logger.info("asset_writes_awaiting", pending=len(self._pending_writes))
                 try:
                     await asyncio.wait_for(
                         asyncio.gather(*self._pending_writes, return_exceptions=True),
@@ -476,7 +469,7 @@ class HardenedCapture:
                     )
                 except TimeoutError:
                     leaked = len(self._pending_writes)
-                    self.log(f"⚠️  {leaked} asset write(s) did not finish in 10s")
+                    self.logger.warning("asset_writes_timeout", leaked=leaked, timeout_s=10.0)
                     self.errors.append(f"asset_write_timeout: {leaked} pending")
 
             await context.close()
@@ -528,9 +521,10 @@ class HardenedCapture:
         (self.output_dir / "manifest.json").write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-        self.log(
-            f"✅ Capture complete: {len(self.captured_assets)} assets, "
-            f"{manifest['html_size_kb']} KB HTML"
+        self.logger.info(
+            "capture_complete",
+            assets_count=len(self.captured_assets),
+            html_size_kb=manifest["html_size_kb"],
         )
         return manifest
 
@@ -603,9 +597,10 @@ class HardenedCapture:
             if any(k.lower() == "authorization" for k in req_headers):
                 self._authed_skipped += 1
                 if self._authed_skipped == 1:
-                    self.log(
-                        "⚠️  Skipping authenticated response capture "
-                        "(Authorization header present); see manifest.authed_skipped"
+                    self.logger.warning(
+                        "authed_response_skipped",
+                        reason="authorization_header_present",
+                        manifest_field="authed_skipped",
                     )
                 return
             if url in self.captured_assets:
@@ -613,9 +608,10 @@ class HardenedCapture:
             # P2-12: warn (once) when capturing an opaque octet-stream body.
             if "octet-stream" in ctype.lower() and not self._octet_stream_warned:
                 self._octet_stream_warned = True
-                self.log(
-                    "⚠️  Capturing octet-stream response — content type is opaque; "
-                    "review manifest for unexpected captures"
+                self.logger.warning(
+                    "octet_stream_captured",
+                    reason="opaque_content_type",
+                    note="review manifest for unexpected captures",
                 )
             # P1-E: enforce global asset count cap before fetching body
             if len(self.captured_assets) >= self.cfg.max_assets:
@@ -623,9 +619,10 @@ class HardenedCapture:
                 # First-drop warning: makes the cap-hit visible during capture
                 # (operators previously had to inspect manifest.json post-hoc).
                 if self._asset_count_dropped == 1:
-                    self.log(
-                        f"⚠️  Asset count cap reached ({self.cfg.max_assets}); "
-                        "subsequent assets dropped — see manifest.asset_caps_dropped"
+                    self.logger.warning(
+                        "asset_count_cap_reached",
+                        max_assets=self.cfg.max_assets,
+                        manifest_field="asset_caps_dropped",
                     )
                 return
             try:
@@ -637,9 +634,10 @@ class HardenedCapture:
                 if self._total_asset_bytes + len(body) > max_total:
                     self._asset_count_dropped += 1
                     if self._asset_count_dropped == 1:
-                        self.log(
-                            f"⚠️  Asset bytes cap reached "
-                            f"({self.cfg.max_total_asset_mb} MB); subsequent assets dropped"
+                        self.logger.warning(
+                            "asset_bytes_cap_reached",
+                            max_total_mb=self.cfg.max_total_asset_mb,
+                            manifest_field="asset_caps_dropped",
                         )
                     return
                 fname = asset_filename(url)
@@ -680,7 +678,9 @@ class HardenedCapture:
 
         # Pass 1: forward fast (warm-up)
         if self.cfg.scroll_passes >= 1 and not over_budget():
-            self.log("📜 Scroll pass 1/3 (forward fast)...")
+            self.logger.info(
+                "scroll_pass_start", pass_num=1, of=3, direction="forward", speed="fast"
+            )
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_fast)):
                 if over_budget():
                     self.scroll_budget_exceeded = True
@@ -690,7 +690,9 @@ class HardenedCapture:
 
         # Pass 2: forward slow (settle observers)
         if self.cfg.scroll_passes >= 2 and not over_budget():
-            self.log("📜 Scroll pass 2/3 (forward slow)...")
+            self.logger.info(
+                "scroll_pass_start", pass_num=2, of=3, direction="forward", speed="slow"
+            )
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(0, h + vh, int(vh * self.cfg.scroll_jump_ratio_slow)):
                 if over_budget():
@@ -701,7 +703,9 @@ class HardenedCapture:
 
         # Pass 3: backward slow (parallax/sticky)
         if self.cfg.scroll_passes >= 3 and not over_budget():
-            self.log("📜 Scroll pass 3/3 (backward slow)...")
+            self.logger.info(
+                "scroll_pass_start", pass_num=3, of=3, direction="backward", speed="slow"
+            )
             h = await page.evaluate("() => document.body.scrollHeight")
             for y in range(h, -vh, -int(vh * self.cfg.scroll_jump_ratio_slow)):
                 if over_budget():
@@ -715,12 +719,14 @@ class HardenedCapture:
         await page.wait_for_timeout(500)
         elapsed = time.time() - budget_start
         if self.scroll_budget_exceeded:
-            self.log(
-                f"⚠️  Scroll budget exceeded ({elapsed:.1f}s > "
-                f"{self.cfg.max_scroll_seconds}s) — capture may be incomplete"
+            self.logger.warning(
+                "scroll_budget_exceeded",
+                elapsed_s=round(elapsed, 1),
+                max_scroll_s=self.cfg.max_scroll_seconds,
+                note="capture may be incomplete",
             )
         else:
-            self.log(f"✓ Three-pass scroll complete ({elapsed:.1f}s)")
+            self.logger.info("scroll_complete", elapsed_s=round(elapsed, 1))
 
     async def _extract_html(self, page: Page) -> str:
         """Pick the most informative source: main doc, iframe[srcdoc], or same-origin frame.
@@ -742,7 +748,7 @@ class HardenedCapture:
         main_html_len = len(main_html)
 
         if os.getenv("KCD_NO_IFRAME_SRCDOC", "false").lower() == "true":
-            self.log("🔍 KCD_NO_IFRAME_SRCDOC=true → skipping srcdoc detection")
+            self.logger.info("iframe_srcdoc_detection_skipped", env="KCD_NO_IFRAME_SRCDOC")
         else:
             # Iframe srcdoc detection (Aura wraps user sites in iframe[srcdoc])
             iframe_html = cast(
@@ -763,16 +769,21 @@ class HardenedCapture:
                 ratio = (len(iframe_html) / main_html_len) if main_html_len else 0.0
                 min_ratio = float(os.getenv("KCD_IFRAME_MIN_RATIO", "0.5"))
                 if ratio >= min_ratio:
-                    self.log(
-                        f"🔍 Using iframe[srcdoc] ({len(iframe_html) // 1024} KB, "
-                        f"ratio={ratio:.2f} ≥ {min_ratio})"
+                    self.logger.info(
+                        "iframe_srcdoc_used",
+                        size_kb=len(iframe_html) // 1024,
+                        ratio=round(ratio, 2),
+                        min_ratio=min_ratio,
                     )
                     return iframe_html
                 else:
-                    self.log(
-                        f"⚠️  iframe[srcdoc] too small ({len(iframe_html)} B vs "
-                        f"{main_html_len} B main, ratio={ratio:.2f} < {min_ratio}) — "
-                        "preferring main doc"
+                    self.logger.warning(
+                        "iframe_srcdoc_too_small",
+                        iframe_bytes=len(iframe_html),
+                        main_bytes=main_html_len,
+                        ratio=round(ratio, 2),
+                        min_ratio=min_ratio,
+                        decision="preferring_main_doc",
                     )
 
         # Same-origin iframe whose document we can access — proper netloc compare
@@ -796,14 +807,14 @@ class HardenedCapture:
                         or ""
                     )
                     if len(f_html) > 1000 and len(f_html) >= main_html_len * 0.5:
-                        self.log(
-                            "🔍 Using same-origin iframe content "
-                            f"({len(f_html) // 1024} KB, "
-                            f"netloc={f_netloc or 'about:srcdoc'})"
+                        self.logger.info(
+                            "same_origin_iframe_used",
+                            size_kb=len(f_html) // 1024,
+                            netloc=f_netloc or "about:srcdoc",
                         )
                         return "<!DOCTYPE html>\n" + f_html
             except Exception as e:
-                self.log(f"⚠️  iframe enumeration error: {e}")
+                self.logger.warning("iframe_enumeration_failed", error=str(e))
 
         # Default: main document with shadow walker if enabled
         if self.cfg.use_shadow_walker:
@@ -815,17 +826,15 @@ class HardenedCapture:
             )
             html: str = result["html"]
             self.shadow_skipped_closed = int(result.get("skipped_closed_shadow_roots", 0))
-            self.log(
-                f"📄 Captured main doc with shadow walker ({len(html) // 1024} KB"
-                + (
-                    f", {self.shadow_skipped_closed} closed shadow root(s) skipped)"
-                    if self.shadow_skipped_closed
-                    else ")"
-                )
+            self.logger.info(
+                "main_doc_captured",
+                size_kb=len(html) // 1024,
+                shadow_walker=True,
+                shadow_skipped_closed=self.shadow_skipped_closed,
             )
         else:
             html = main_html or await page.content()
-            self.log(f"📄 Captured main doc ({len(html) // 1024} KB)")
+            self.logger.info("main_doc_captured", size_kb=len(html) // 1024, shadow_walker=False)
         return html
 
     async def _capture_computed_styles(self, page: Page) -> dict[str, Any]:

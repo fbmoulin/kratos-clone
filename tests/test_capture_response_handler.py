@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from kratos_clone.capture import CaptureConfig, HardenedCapture
 
@@ -119,17 +120,16 @@ async def test_octet_stream_warns_once(tmp_path):
     Sends three responses with content-type `application/octet-stream` to `_on_response`, captures log messages, and asserts a single warning mentioning "octet-stream" was emitted and that `cap._octet_stream_warned` is set to True.
     """
     cap = _make_capture(tmp_path)
-    logged: list[str] = []
-    cap.log = lambda msg: logged.append(msg)
-    for i in range(3):
-        resp = _make_response(
-            url=f"https://example.com/blob{i}.bin",
-            ctype="application/octet-stream",
-            body=b"\x00\x01",
-            request_headers={},
-        )
-        await cap._on_response(resp)
-    octet_warnings = [m for m in logged if "octet-stream" in m]
+    with capture_logs() as logs:
+        for i in range(3):
+            resp = _make_response(
+                url=f"https://example.com/blob{i}.bin",
+                ctype="application/octet-stream",
+                body=b"\x00\x01",
+                request_headers={},
+            )
+            await cap._on_response(resp)
+    octet_warnings = [e for e in logs if e.get("event") == "octet_stream_captured"]
     assert len(octet_warnings) == 1, f"expected exactly one warning, got {octet_warnings}"
     assert cap._octet_stream_warned is True
 
@@ -137,16 +137,15 @@ async def test_octet_stream_warns_once(tmp_path):
 @pytest.mark.asyncio
 async def test_authed_skip_warns_once(tmp_path):
     cap = _make_capture(tmp_path)
-    logged: list[str] = []
-    cap.log = lambda msg: logged.append(msg)
-    for i in range(3):
-        resp = _make_response(
-            url=f"https://example.com/p{i}.js",
-            ctype="application/javascript",
-            request_headers={"authorization": "Bearer x"},
-        )
-        await cap._on_response(resp)
-    auth_warnings = [m for m in logged if "Authorization" in m or "authenticated" in m.lower()]
+    with capture_logs() as logs:
+        for i in range(3):
+            resp = _make_response(
+                url=f"https://example.com/p{i}.js",
+                ctype="application/javascript",
+                request_headers={"authorization": "Bearer x"},
+            )
+            await cap._on_response(resp)
+    auth_warnings = [e for e in logs if e.get("event") == "authed_response_skipped"]
     assert len(auth_warnings) == 1
 
 
