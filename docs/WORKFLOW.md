@@ -201,7 +201,7 @@ KCD_CAPTURE_COMPUTED_STYLES=true # new — emits styles.json
 `scripts/post_process.py` — but the structurally-significant rewriter lives in `kratos_clone/post.py:166-179` (`rewrite_html_assets`) and runs inline at capture-time:
 
 1. **Orphan `<link rel="stylesheet">` injection** — `kratos_clone/post.py:166-179` scans captured `.css` assets, diffs against the serialized DOM, and re-injects any CSS file referenced only from an iframe-srcdoc wrapper or a stripped `<head>`. **This is the mechanism behind the CSS recovery originally over-credited to the 5-patch hardening (audit P2-10).** On Aura/iframe-srcdoc sites it recovers the entire Tailwind bundle (~440 KB) that would otherwise be omitted.
-2. **Strip destructive CSS** — remove `<style data-scroll-fix="true">` and similar overlays IF `KCD_PRESERVE_ANIMATIONS=true` (default true going forward).
+2. **Strip destructive CSS** *(planned)* — remove `<style data-scroll-fix="true">` and similar overlays. The knob (`KCD_PRESERVE_ANIMATIONS` or equivalent) is not yet wired into `CaptureConfig`; today the stripping happens unconditionally inside `kratos_clone/post.py:strip_scroll_fix`.
 3. **Asset audit** — diff captured assets vs `<img>` / `url()` references in HTML; report broken refs.
 4. **Image fallback handler** — if source page has a fallback handler script (Aura's `data-img-fallback-handler`), keep it; ensures CDN images that 404 cycle through replicas.
 5. **Inline base-64 small images** (<10 KB, opt-in) so the file is portable.

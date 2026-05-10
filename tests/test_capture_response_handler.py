@@ -152,7 +152,14 @@ async def test_authed_skip_warns_once(tmp_path):
 
 @pytest.mark.asyncio
 async def test_authed_skip_counted_in_manifest_field(tmp_path):
-    """The new ``_authed_skipped`` counter is the source for the manifest field."""
+    """``_authed_skipped`` surfaces as ``manifest['authed_skipped']``.
+
+    We can't easily call ``HardenedCapture.run()`` here (needs Playwright),
+    but we can confirm the public contract by inspecting the source of
+    ``run()`` to verify the manifest dict keys + counter wiring exist.
+    """
+    import inspect
+
     cap = _make_capture(tmp_path)
     resp = _make_response(
         url="https://example.com/secret.js",
@@ -160,5 +167,31 @@ async def test_authed_skip_counted_in_manifest_field(tmp_path):
         request_headers={"authorization": "Bearer x"},
     )
     await cap._on_response(resp)
-    # Mirror what ``run()`` writes into manifest.json.
     assert cap._authed_skipped == 1
+
+    src = inspect.getsource(HardenedCapture.run)
+    assert '"authed_skipped"' in src, "manifest field name 'authed_skipped' missing from run()"
+    assert "self._authed_skipped" in src, "manifest field not wired to _authed_skipped counter"
+
+
+@pytest.mark.asyncio
+async def test_authed_skip_falls_back_to_sync_headers(tmp_path):
+    """Fallback path: if ``request.all_headers()`` raises, ``request.headers`` is used.
+
+    Older Playwright versions (or partial mocks) may not expose
+    ``all_headers()``. The handler must still detect Authorization headers
+    via the sync ``.headers`` attribute. Without this fallback, authed
+    capture skip silently breaks under those versions.
+    """
+    cap = _make_capture(tmp_path)
+    resp = _make_response(
+        url="https://example.com/private.js",
+        ctype="application/javascript",
+        request_headers={"authorization": "Bearer secret"},
+    )
+    # Force the async path to raise; sync ``.headers`` should still be consulted.
+    resp.request.all_headers = AsyncMock(side_effect=RuntimeError("not available"))
+    await cap._on_response(resp)
+    assert cap._authed_skipped == 1
+    assert resp.url not in cap.captured_assets
+    resp.body.assert_not_called()
