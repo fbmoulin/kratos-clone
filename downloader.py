@@ -230,14 +230,7 @@ class WebsiteDownloader:
         # 1. Fix html element
         html_elem = soup.find("html")
         if isinstance(html_elem, Tag):
-            html_classes_raw = html_elem.get("class")
-            html_classes: list[str]
-            if html_classes_raw is None:
-                html_classes = []
-            elif isinstance(html_classes_raw, str):
-                html_classes = html_classes_raw.split()
-            else:
-                html_classes = list(html_classes_raw)
+            html_classes = _as_str(html_elem.get("class")).split()
 
             # Remove Lenis-specific classes that block scroll
             lenis_classes = [
@@ -261,14 +254,7 @@ class WebsiteDownloader:
         # 2. Fix body element
         body = soup.find("body")
         if isinstance(body, Tag):
-            body_classes_raw = body.get("class")
-            body_classes: list[str]
-            if body_classes_raw is None:
-                body_classes = []
-            elif isinstance(body_classes_raw, str):
-                body_classes = body_classes_raw.split()
-            else:
-                body_classes = list(body_classes_raw)
+            body_classes = _as_str(body.get("class")).split()
 
             # Remove scroll-blocking classes
             blocking_classes = [
@@ -1032,8 +1018,7 @@ class WebsiteDownloader:
         # 6. Process favicons and other link tags with URLs
         for link in soup.find_all("link"):
             if link.get("href") and link.get("rel"):
-                rel_raw = link["rel"]
-                rel = " ".join(rel_raw) if isinstance(rel_raw, list) else _as_str(rel_raw)
+                rel = _as_str(link["rel"])
                 if (
                     "icon" in rel.lower()
                     or "apple-touch" in rel.lower()
