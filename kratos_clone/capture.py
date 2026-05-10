@@ -616,8 +616,9 @@ class HardenedCapture:
             if "octet-stream" in ctype.lower() and not self._octet_stream_warned:
                 self._octet_stream_warned = True
                 self.logger.warning(
+                self.logger.warning(
                     "octet_stream_captured",
-                    asset_url=url,
+                    url=url,
                     reason="opaque_content_type",
                     note="review manifest for unexpected captures",
                 )
