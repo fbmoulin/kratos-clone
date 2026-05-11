@@ -144,46 +144,124 @@
             font-weight: 600;
             text-decoration: underline;
         }
+        .error-message {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            margin-top: 0.75rem;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .error-message.active { display: block; }
+        /* Visually hidden but available to assistive tech (WCAG label pattern) */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        /* Stronger contrast on subtitle to clear WCAG AA (P2 follow-up) */
+        .subtitle { color: #4a4a4a; }
+        /* Style focus outline so keyboard users see where focus lands */
+        button:focus-visible, input:focus-visible, a:focus-visible {
+            outline: 3px solid #4a6cf7;
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <main class="container" aria-busy="false" id="mainCard">
         <h1>🌐 Website Downloader</h1>
         <p class="subtitle">Baixe uma réplica perfeita de qualquer site, incluindo JS renderizado</p>
-        
-        <div class="input-group">
-            <input type="url" id="urlInput" placeholder="https://exemplo.com" required>
-        </div>
-        
-        <button id="downloadBtn" onclick="startDownload()">
-            <span id="btnText">Baixar Réplica</span>
-            <div class="spinner" id="spinner" style="display: none;"></div>
-        </button>
-        
-        <div class="log-container" id="logContainer"></div>
-        
-        <div class="success-message" id="successMessage">
+
+        <form id="downloadForm" novalidate>
+            <div class="input-group">
+                <label for="urlInput" class="sr-only">URL do site para baixar</label>
+                <input
+                    type="url"
+                    id="urlInput"
+                    name="url"
+                    placeholder="https://exemplo.com"
+                    required
+                    autocomplete="url"
+                    aria-describedby="errorMessage"
+                    aria-invalid="false"
+                >
+            </div>
+
+            <div class="error-message" id="errorMessage" role="alert" aria-live="assertive"></div>
+
+            <button id="downloadBtn" type="submit">
+                <span id="btnText">Baixar Réplica</span>
+                <div class="spinner" id="spinner" style="display: none;" aria-hidden="true"></div>
+            </button>
+        </form>
+
+        <div
+            class="log-container"
+            id="logContainer"
+            role="log"
+            aria-live="polite"
+            aria-label="Log de progresso do download"
+        ></div>
+
+        <div
+            class="success-message"
+            id="successMessage"
+            role="status"
+            aria-live="polite"
+        >
             ✅ Download pronto! <a href="#" id="downloadLink">Clique aqui se não iniciou automaticamente</a>
         </div>
-    </div>
+
+        <p style="margin-top:1.5rem;font-size:0.85rem;color:#666;text-align:center">
+            <a href="/personalize" style="color:#4a6cf7;text-decoration:none;font-weight:500">
+                ✨ Personalizar uma captura existente →
+            </a>
+        </p>
+    </main>
 
     <script>
         let currentSessionId = null;
         let eventSource = null;
 
+        const $ = (id) => document.getElementById(id);
+
+        function showError(message) {
+            const el = $('errorMessage');
+            el.textContent = message;
+            el.classList.add('active');
+            $('urlInput').setAttribute('aria-invalid', 'true');
+            // Move focus to input so screen readers + keyboard users find the error
+            $('urlInput').focus();
+        }
+
+        function clearError() {
+            const el = $('errorMessage');
+            el.textContent = '';
+            el.classList.remove('active');
+            $('urlInput').setAttribute('aria-invalid', 'false');
+        }
+
         function startDownload() {
-            const url = document.getElementById('urlInput').value.trim();
+            const url = $('urlInput').value.trim();
             if (!url) {
-                alert('Por favor, insira uma URL válida');
+                showError('Insira uma URL completa (ex.: https://exemplo.com).');
                 return;
             }
 
-            // Update UI
+            clearError();
             setLoading(true);
             clearLogs();
             hideSuccess();
 
-            // Start download
             fetch('/start-download', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -193,15 +271,17 @@
             .then(data => {
                 if (data.error) {
                     addLog('❌ ' + data.error);
+                    showError(data.error);
                     setLoading(false);
                     return;
                 }
-                
+
                 currentSessionId = data.session_id;
                 connectSSE(currentSessionId);
             })
             .catch(error => {
                 addLog('❌ Erro de conexão: ' + error.message);
+                showError('Erro de conexão: ' + error.message);
                 setLoading(false);
             });
         }
@@ -215,16 +295,15 @@
 
             eventSource.addEventListener('done', function(event) {
                 eventSource.close();
-                
+
                 if (event.data === 'complete') {
-                    // Trigger download
                     triggerDownload(sessionId);
                     showSuccess(sessionId);
                 } else {
                     addLog('❌ Download falhou');
+                    showError('Falha no download. Veja o log para detalhes.');
                 }
-                
-                // Reset UI after a short delay
+
                 setTimeout(resetUI, 2000);
             });
 
@@ -238,32 +317,34 @@
             const link = document.createElement('a');
             link.href = '/download-file/' + sessionId;
             link.click();
-            
-            // Update manual download link
-            document.getElementById('downloadLink').href = '/download-file/' + sessionId;
+            $('downloadLink').href = '/download-file/' + sessionId;
         }
 
         function showSuccess(sessionId) {
-            document.getElementById('successMessage').classList.add('active');
-            document.getElementById('downloadLink').href = '/download-file/' + sessionId;
+            $('successMessage').classList.add('active');
+            $('downloadLink').href = '/download-file/' + sessionId;
+            // Move focus to the manual-download link so keyboard users land on the next action
+            $('downloadLink').focus();
         }
 
         function hideSuccess() {
-            document.getElementById('successMessage').classList.remove('active');
+            $('successMessage').classList.remove('active');
         }
 
         function setLoading(loading) {
-            const btn = document.getElementById('downloadBtn');
-            const btnText = document.getElementById('btnText');
-            const spinner = document.getElementById('spinner');
-            const input = document.getElementById('urlInput');
-            const logContainer = document.getElementById('logContainer');
+            const btn = $('downloadBtn');
+            const btnText = $('btnText');
+            const spinner = $('spinner');
+            const input = $('urlInput');
+            const logContainer = $('logContainer');
+            const card = $('mainCard');
 
             btn.disabled = loading;
             input.disabled = loading;
             spinner.style.display = loading ? 'block' : 'none';
-            btnText.textContent = loading ? 'Processando...' : 'Baixar Réplica';
-            
+            btnText.textContent = loading ? 'Processando…' : 'Baixar Réplica';
+            card.setAttribute('aria-busy', loading ? 'true' : 'false');
+
             if (loading) {
                 logContainer.classList.add('active');
             }
@@ -271,18 +352,21 @@
 
         function resetUI() {
             setLoading(false);
-            document.getElementById('urlInput').value = '';
-            
-            // Hide logs after delay
-            setTimeout(() => {
-                document.getElementById('logContainer').classList.remove('active');
-                hideSuccess();
-                clearLogs();
-            }, 5000);
+            // Keep the URL — re-running for a variant is a common pattern (was: auto-clear).
+            // Only hide success/logs; don't wipe the input or empty the log on error so the
+            // user can copy log lines / inspect failures.
+            const isError = $('errorMessage').classList.contains('active');
+            if (!isError) {
+                setTimeout(() => {
+                    $('logContainer').classList.remove('active');
+                    hideSuccess();
+                    clearLogs();
+                }, 5000);
+            }
         }
 
         function addLog(message) {
-            const container = document.getElementById('logContainer');
+            const container = $('logContainer');
             const entry = document.createElement('div');
             entry.className = 'log-entry';
             entry.textContent = message;
@@ -291,14 +375,13 @@
         }
 
         function clearLogs() {
-            document.getElementById('logContainer').innerHTML = '';
+            $('logContainer').innerHTML = '';
         }
 
-        // Handle Enter key
-        document.getElementById('urlInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && !document.getElementById('downloadBtn').disabled) {
-                startDownload();
-            }
+        // Native form submit — handles Enter key for free and is what assistive tech expects
+        $('downloadForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (!$('downloadBtn').disabled) startDownload();
         });
     </script>
 
