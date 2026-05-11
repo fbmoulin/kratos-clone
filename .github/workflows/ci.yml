@@ -169,14 +169,16 @@ jobs:
       - name: Install mypy + project deps
         run: |
           pip install --upgrade pip
-          pip install mypy openai pillow python-dotenv playwright beautifulsoup4 \
-            requests urllib3 flask flask-limiter gunicorn psutil structlog
+          pip install mypy types-requests openai pillow python-dotenv playwright \
+            beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog
 
       - name: Run mypy
-        # Soft gate — mypy is wired in Phase 6 with strict only on personalize/.
-        # Legacy modules use permissive overrides to allow gradual typing.
-        # Flip to a hard gate (drop `|| true`) once app.py + kratos_clone are typed.
-        run: mypy --config-file pyproject.toml || true
+        # HARD gate. Strict on personalize/, kratos_clone/, scripts/{probe,
+        # post_process,validate}; permissive on legacy app.py/wsgi/downloader;
+        # excluded entirely: scripts/generate_design_system_v{1,2}.py and
+        # scripts/inventory.py (single-script style with module-level side
+        # effects — incompatible with strict mode until refactored).
+        run: mypy --config-file pyproject.toml
 
   bandit:
     name: bandit (security lint)
@@ -194,8 +196,8 @@ jobs:
           pip install --upgrade pip
           pip install bandit
 
-      - name: Run bandit (HIGH gate, MEDIUM/LOW informational)
-        # Hard gate on HIGH-severity findings. MEDIUM/LOW reported but don't
-        # fail. Existing HIGH findings (debug=True in __main__, MD5 for asset
-        # filenames) are annotated #nosec B201 / usedforsecurity=False.
-        run: bandit -r personalize/ kratos_clone/ scripts/ app.py --severity-level high
+      - name: Run bandit (MEDIUM gate, LOW informational)
+        # Hard gate on MEDIUM+ findings. Both pre-existing HIGH findings
+        # (debug=True in __main__, MD5 for asset filenames) annotated as
+        # false-positives in code; current MEDIUM count is 0.
+        run: bandit -r personalize/ kratos_clone/ scripts/ app.py --severity-level medium

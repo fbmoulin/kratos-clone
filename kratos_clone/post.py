@@ -17,9 +17,27 @@ Script bodies, HTML comments, and arbitrary text nodes are NEVER touched.
 from __future__ import annotations
 
 import re
+from typing import Any
 from urllib.parse import quote
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
+
+
+def _attr_str(value: Any) -> str:
+    """Normalize a bs4 tag attribute value to a plain str.
+
+    bs4's typing returns ``str | AttributeValueList | None`` for any
+    attribute lookup since multi-valued attrs (``class``, ``rel``, ``rev``,
+    ``srcset``, etc.) come back as a list. URL-bearing attrs we care about
+    here (``src``, ``href``, ``data-src``, ``style``, ``content``) are
+    single-valued by HTML spec so the cast is safe at runtime.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return " ".join(str(v) for v in value)
+
 
 # Attributes that commonly carry a URL value (single URL).
 # Security review extension: cite, data, formaction, action, manifest, background
@@ -139,24 +157,23 @@ def rewrite_html_assets(html: str, captured_assets: dict[str, str], base_url: st
     soup = BeautifulSoup(html, "html.parser")
 
     for el in soup.find_all(True):
-        if not isinstance(el, Tag):
-            continue
+        # find_all(True) returns ResultSet[Tag] per bs4 stubs — no narrowing needed.
         # Plain URL attributes
         for attr in _URL_ATTRS:
             if el.has_attr(attr):
-                el[attr] = _try_replace(el[attr], url_map)
+                el[attr] = _try_replace(_attr_str(el[attr]), url_map)
         # srcset (multi-URL)
         for attr in _SRCSET_ATTRS:
             if el.has_attr(attr):
-                el[attr] = _rewrite_srcset(el[attr], url_map)
+                el[attr] = _rewrite_srcset(_attr_str(el[attr]), url_map)
         # <meta content="...url..."> for og:image and similar
         if el.name in _CONTENT_URL_ELEMENTS and el.has_attr("content"):
-            cur = el["content"] or ""
+            cur = _attr_str(el["content"])
             if cur.startswith(("http://", "https://", "//")):
                 el["content"] = _try_replace(cur, url_map)
         # Inline style="..." with url(...)
         if el.has_attr("style"):
-            el["style"] = _rewrite_css_url_funcs(el["style"], url_map)
+            el["style"] = _rewrite_css_url_funcs(_attr_str(el["style"]), url_map)
 
     # <style> blocks
     for style in soup.find_all("style"):

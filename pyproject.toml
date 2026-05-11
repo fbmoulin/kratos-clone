@@ -25,6 +25,7 @@ dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.15.12",
+    "types-requests>=2.33.0.20260408",
 ]
 
 [tool.pytest.ini_options]
@@ -70,17 +71,32 @@ no_implicit_optional = true
 ignore_missing_imports = true
 # Run only over our code, not site-packages or generated stuff.
 files = ["personalize", "kratos_clone", "scripts", "app.py", "wsgi.py"]
-exclude = ['build/', 'dist/', '\.venv/', 'tests/', 'extracted/', 'extracted_v2/']
+# Legacy single-script style with side effects at module load — incompatible
+# with mypy in strict mode. Excluded until they get refactored to function-style
+# (audit P3). The data-driven coverage scorecard already lives in scripts/validate.py
+# (typed); these old generators will be touched again when scripts/inventory.py
+# is enriched.
+exclude = [
+    'build/',
+    'dist/',
+    '\.venv/',
+    'tests/',
+    'extracted/',
+    'extracted_v2/',
+    'scripts/generate_design_system_v1\.py',
+    'scripts/generate_design_system_v2\.py',
+    'scripts/inventory\.py',
+]
 
 # Strict on the new modules where typing was authored deliberately.
 [[tool.mypy.overrides]]
-module = ["personalize.*"]
+module = ["personalize.*", "kratos_clone.*", "scripts.probe", "scripts.post_process", "scripts.validate"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_unreachable = true
 
-# Permissive on legacy modules — gradual typing path. Tighten as we go.
+# Permissive on remaining legacy modules — gradual typing path.
 [[tool.mypy.overrides]]
-module = ["app", "wsgi", "downloader", "kratos_clone.*", "scripts.generate_design_system_v1", "scripts.generate_design_system_v2", "scripts.inventory"]
+module = ["app", "wsgi", "downloader"]
 disallow_untyped_defs = false
 check_untyped_defs = false

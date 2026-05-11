@@ -28,7 +28,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from playwright.async_api import Page, Route, async_playwright
+from playwright.async_api import Page, Response, Route, async_playwright
 
 # ── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_VIEWPORT = (1920, 1080)
@@ -322,7 +322,7 @@ class HardenedCapture:
 
             # Network capture — wrap async handler in a tracked task so we can
             # await all pending writes before context.close() (P1-B fix).
-            def _on_response_tracked(response):
+            def _on_response_tracked(response: Response) -> None:
                 task = asyncio.create_task(self._on_response(response))
                 self._pending_writes.add(task)
                 task.add_done_callback(self._pending_writes.discard)
@@ -446,7 +446,9 @@ class HardenedCapture:
                 "E_computed_styles" if self.cfg.capture_computed_styles else None,
             ],
         }
-        manifest["patches_applied"] = [p for p in manifest["patches_applied"] if p]
+        patches = manifest["patches_applied"]
+        assert isinstance(patches, list)  # narrow for mypy
+        manifest["patches_applied"] = [p for p in patches if p]
         (self.output_dir / "manifest.json").write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
         )
@@ -456,7 +458,7 @@ class HardenedCapture:
         )
         return manifest
 
-    async def _route_handler(self, route: Route):
+    async def _route_handler(self, route: Route) -> None:
         """Block analytics/tracking for cleaner network-idle and faster captures."""
         url = route.request.url
         BLOCK_PATTERNS = (
@@ -486,7 +488,7 @@ class HardenedCapture:
         else:
             await route.continue_()
 
-    async def _on_response(self, response):
+    async def _on_response(self, response: Response) -> None:
         """Capture network resources for asset rewriting."""
         try:
             url = response.url
@@ -554,7 +556,7 @@ class HardenedCapture:
         except Exception as e:
             self.errors.append(f"response_handler: {e}")
 
-    async def _three_pass_scroll(self, page: Page):
+    async def _three_pass_scroll(self, page: Page) -> None:
         """Patch C — three-pass scroll: forward-fast, forward-slow, backward-slow.
 
         P2-2 fix: hard wall-clock budget (`KCD_MAX_SCROLL_S`, default 120s).
@@ -657,7 +659,7 @@ class HardenedCapture:
                         f"🔍 Using iframe[srcdoc] ({len(iframe_html) // 1024} KB, "
                         f"ratio={ratio:.2f} ≥ {min_ratio})"
                     )
-                    return iframe_html
+                    return str(iframe_html)
                 else:
                     self.log(
                         f"⚠️  iframe[srcdoc] too small ({len(iframe_html)} B vs "
@@ -688,7 +690,7 @@ class HardenedCapture:
                             f"({len(f_html) // 1024} KB, "
                             f"netloc={f_netloc or 'about:srcdoc'})"
                         )
-                        return "<!DOCTYPE html>\n" + f_html
+                        return "<!DOCTYPE html>\n" + str(f_html)
             except Exception as e:
                 self.log(f"⚠️  iframe enumeration error: {e}")
 
@@ -710,11 +712,11 @@ class HardenedCapture:
         else:
             html = main_html or await page.content()
             self.log(f"📄 Captured main doc ({len(html) // 1024} KB)")
-        return html
+        return str(html)
 
     async def _capture_computed_styles(self, page: Page) -> dict:
         """Patch E — sample key computed styles per element for downstream extraction."""
-        return await page.evaluate(r"""
+        result: dict = await page.evaluate(r"""
             () => {
                 const props = ['fontSize','fontWeight','fontFamily','lineHeight','letterSpacing',
                                'color','backgroundColor','backgroundImage',
@@ -759,3 +761,4 @@ class HardenedCapture:
                 return out;
             }
         """)
+        return result

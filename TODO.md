@@ -33,11 +33,14 @@ see `docs/AUDIT.md`.
 
 Phases 4–6 shipped 2026-04-27. Open work tracked as: 7 P2 items + ~13 P3 in
 `docs/AUDIT.md`. Notable next-step candidates:
-- Tighten mypy from soft to hard gate after typing `app.py` + `kratos_clone/`
-- Bump bandit gate to MEDIUM
-- Address Gemini-flagged MEDIUMs from PR #7 (palette regex, asyncio.run-in-sync)
-- Enrich `scripts/inventory.py` with font_families/durations/shadows extractors
+- [x] **Tighten mypy from soft to hard gate** — shipped in `feat/tighten-quality-gates`. Strict expanded to `kratos_clone.*` + `scripts.{probe,post_process,validate}`. Legacy single-script generators excluded until refactor. `app.py`/`wsgi`/`downloader` still permissive.
+- [x] **Bump bandit gate to MEDIUM** — shipped in `feat/tighten-quality-gates`. Pre-existing HIGH findings (B324 MD5, B201 debug=True) annotated; current MEDIUM count: 0.
+- [x] **Address Gemini-flagged MEDIUMs from PR #7** — shipped in PR #14 (b7cf39c): palette regex global-replace, asyncio.run-in-sync.
+- [ ] Enrich `scripts/inventory.py` with font_families/durations/shadows extractors
   (raises Phase 5 coverage scorecard from ~30-50 → genuine high-coverage number)
+- [ ] Type-hint `app.py` + `wsgi.py` + `downloader.py` to flip them from permissive → strict
+- [ ] A/B harness for the "+70%" claim (audit P2-9 still open)
+- [ ] Authed-response capture redaction (`Authorization` header skip in `_on_response`) — audit P2-12
 
 ---
 

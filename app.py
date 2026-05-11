@@ -41,7 +41,7 @@ else:
     _processors.append(structlog.dev.ConsoleRenderer(colors=True))
 
 structlog.configure(
-    processors=_processors,
+    processors=_processors,  # type: ignore[arg-type]
     wrapper_class=structlog.make_filtering_bound_logger(_log_level),
     logger_factory=structlog.stdlib.LoggerFactory(),
     cache_logger_on_first_use=True,
@@ -65,7 +65,9 @@ app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 if os.getenv("TRUST_PROXY", "0").strip() == "1":
     from werkzeug.middleware.proxy_fix import ProxyFix
 
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+    # WSGIApplication is callable, not a method — assignment is the documented
+    # ProxyFix wiring pattern. mypy flags this as method-assign.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # type: ignore[method-assign]
     logger.info("proxy_fix_enabled", x_for=1, x_proto=1)
 
 # P2-5: rate-limit /api/client-errors. Lazy: limiter is bound to a route via
@@ -117,8 +119,8 @@ CLEANUP_INTERVAL = 300  # how often the janitor runs
 # Per-session state. Always touch via session_lock when iterating/mutating.
 # Module-level so routes (registered via @app.route below) can close over them;
 # cleared/reset by tests via _reset_state().
-message_queues = {}
-download_results = {}
+message_queues: dict[str, queue.Queue] = {}
+download_results: dict[str, dict] = {}
 session_lock = threading.Lock()
 
 

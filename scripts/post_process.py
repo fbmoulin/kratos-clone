@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import structlog
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 log = structlog.get_logger()
 
@@ -53,12 +53,13 @@ def audit_assets(capture_dir: Path) -> AssetAudit:
     return AssetAudit(count=len(paths), total_bytes=total, paths=paths)
 
 
-def _iter_asset_refs(soup: BeautifulSoup) -> Iterable[tuple[object, str, str]]:
+def _iter_asset_refs(soup: BeautifulSoup) -> Iterable[tuple[Tag, str, str]]:
     """Yield ``(tag, attr, value)`` for every URL-bearing attribute pointing
     at a relative path under ``assets/``.
     """
     for attr in ("src", "href"):
-        for tag in soup.find_all(**{attr: True}):
+        for tag in soup.find_all(attrs={attr: True}):
+            # bs4 returns ResultSet[Tag] for attr-keyed find_all; cast is safe.
             value = tag.get(attr)
             if isinstance(value, str) and value.startswith("assets/"):
                 yield tag, attr, value

@@ -147,7 +147,7 @@ def check_asset_refs(capture_dir: Path) -> list[str]:
     soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
     missing: list[str] = []
     for attr in ("src", "href"):
-        for tag in soup.find_all(**{attr: True}):
+        for tag in soup.find_all(attrs={attr: True}):
             value = tag.get(attr)
             if not isinstance(value, str) or not value.startswith("assets/"):
                 continue
@@ -228,8 +228,9 @@ def check_wcag_contrast(capture_dir: Path, *, min_ratio: float = 4.5) -> list[di
         return []
     soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
     fails: list[dict[str, Any]] = []
-    for tag in soup.find_all(style=True):
-        style = tag.get("style") or ""
+    for tag in soup.find_all(attrs={"style": True}):
+        raw_style = tag.get("style")
+        style = raw_style if isinstance(raw_style, str) else ""
         fg_match = _INLINE_COLOR_RE.search(style)
         bg_match = _INLINE_BG_RE.search(style)
         if not (fg_match and bg_match):
