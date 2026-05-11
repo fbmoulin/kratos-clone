@@ -45,36 +45,40 @@
         button:hover:not(:disabled) { box-shadow: 0 8px 20px rgba(74, 108, 247, 0.3); }
         button:active:not(:disabled) { transform: translateY(1px); }
         button:disabled { background: #ccc; cursor: not-allowed; }
-        .status { margin-top: 0.75rem; font-size: 0.85rem; min-height: 1.2em; }
-        .status.error { color: #c1272d; }
-        .status.success { color: #2a7f3a; }
+        .status { margin-top: 0.75rem; font-size: 0.85rem; min-height: 1.2em; color: #4a4a4a; }
+        .status.error { color: #991b1b; font-weight: 500; }
+        .status.success { color: #166534; font-weight: 500; }
         .hidden { display: none; }
         .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-        .download-link { display: inline-block; margin-top: 0.5rem; color: #4a6cf7; }
+        /* Style focus outline so keyboard users see where focus lands */
+        button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+            outline: 3px solid #4a6cf7;
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
-<div class="container">
+<main class="container" aria-busy="false" id="mainCard">
     <h1>Personalizar site clonado</h1>
     <p class="subtitle">Phase 4 — converte um capture em um site com sua marca via OpenAI.</p>
 
-    <section id="step-1">
-        <h2>1. Brief da marca</h2>
+    <section id="step-1" aria-labelledby="step-1-heading">
+        <h2 id="step-1-heading">1. Brief da marca</h2>
         <label for="brief">Descreva sua empresa em 2–3 frases</label>
-        <textarea id="brief" placeholder="Ex: ferramenta de produtividade para times remotos pequenos, foco em onboarding rápido, tom direto e amigável."></textarea>
+        <textarea id="brief" placeholder="Ex: ferramenta de produtividade para times remotos pequenos, foco em onboarding rápido, tom direto e amigável." aria-describedby="extract-status"></textarea>
 
         <label for="logo">Logo (PNG ou JPEG, &le; 2 MB)</label>
         <input type="file" id="logo" accept="image/png,image/jpeg">
 
         <label for="html-dir">Captura existente (pasta dentro de <code>downloads/</code>)</label>
-        <input type="text" id="html-dir" placeholder="ex: site-A">
+        <input type="text" id="html-dir" placeholder="ex: site-A" autocomplete="off">
 
         <button id="extract-btn" type="button">Extrair campos estruturados</button>
-        <div class="status" id="extract-status"></div>
+        <div class="status" id="extract-status" role="status" aria-live="polite"></div>
     </section>
 
-    <section id="step-3" class="hidden">
-        <h2>2. Confirme os campos extraídos</h2>
+    <section id="step-3" class="hidden" aria-labelledby="step-3-heading">
+        <h2 id="step-3-heading">2. Confirme os campos extraídos</h2>
         <p class="subtitle">Edite o que precisar antes de personalizar.</p>
         <label for="company">Empresa</label>
         <input type="text" id="company" maxlength="60">
@@ -85,17 +89,23 @@
         <label for="category">Categoria</label>
         <input type="text" id="category" maxlength="60">
         <label for="tone">Tom (separado por vírgula)</label>
-        <input type="text" id="tone" maxlength="120">
+        <input type="text" id="tone" maxlength="120" aria-describedby="run-status">
 
         <button id="run-btn" type="button">Personalizar site</button>
-        <div class="status" id="run-status"></div>
+        <div class="status" id="run-status" role="status" aria-live="polite"></div>
     </section>
 
-    <section id="step-out" class="hidden">
-        <h2>3. Resultado</h2>
+    <section id="step-out" class="hidden" aria-labelledby="step-out-heading">
+        <h2 id="step-out-heading">3. Resultado</h2>
         <div id="output-summary"></div>
     </section>
-</div>
+
+    <p style="margin-top:1.5rem;font-size:0.85rem;color:#666;text-align:center">
+        <a href="/" style="color:#4a6cf7;text-decoration:none;font-weight:500">
+            ← Voltar para download de site
+        </a>
+    </p>
+</main>
 
 <script>
 (function () {
@@ -111,10 +121,21 @@
         el.className = 'status' + (level ? ' ' + level : '');
     }
 
+    var card = $('mainCard');
+
+    function setBusy(busy) {
+        card.setAttribute('aria-busy', busy ? 'true' : 'false');
+    }
+
     extractBtn.addEventListener('click', function () {
         var brief = ($('brief').value || '').trim();
-        if (!brief) { setStatus('extract-status', 'Brief vazio', 'error'); return; }
+        if (!brief) {
+            setStatus('extract-status', 'Brief vazio — descreva sua empresa em 2–3 frases.', 'error');
+            $('brief').focus();
+            return;
+        }
         extractBtn.disabled = true;
+        setBusy(true);
         setStatus('extract-status', 'Extraindo via gpt-5-mini…');
 
         fetch('/api/personalize/structure', {
@@ -125,6 +146,7 @@
             return r.json().then(function (data) { return { ok: r.ok, data: data, status: r.status }; });
         }).then(function (res) {
             extractBtn.disabled = false;
+            setBusy(false);
             if (!res.ok) {
                 setStatus('extract-status', (res.data && res.data.error) || ('HTTP ' + res.status), 'error');
                 return;
@@ -136,8 +158,11 @@
             $('tone').value = (res.data.tone || []).join(', ');
             step3.classList.remove('hidden');
             setStatus('extract-status', 'Campos extraídos. Edite e clique em Personalizar.', 'success');
+            // Move focus into the next section so keyboard + AT users follow the flow
+            $('company').focus();
         }).catch(function (err) {
             extractBtn.disabled = false;
+            setBusy(false);
             setStatus('extract-status', 'Falha de rede: ' + (err && err.message), 'error');
         });
     });
@@ -165,6 +190,7 @@
         fd.append('logo', logoInput.files[0]);
 
         runBtn.disabled = true;
+        setBusy(true);
         setStatus('run-status', 'Personalizando — gpt-5-mini + gpt-image-1, ~25-30s…');
 
         fetch('/api/personalize/run', { method: 'POST', body: fd })
@@ -172,16 +198,25 @@
                 return r.json().then(function (data) { return { ok: r.ok, data: data, status: r.status }; });
             }).then(function (res) {
                 runBtn.disabled = false;
+                setBusy(false);
                 if (!res.ok) {
                     setStatus('run-status', (res.data && res.data.error) || ('HTTP ' + res.status), 'error');
                     return;
                 }
                 setStatus('run-status', 'Pronto.', 'success');
                 stepOut.classList.remove('hidden');
-                $('output-summary').innerHTML =
-                    'Saída: <code>' + (res.data.output_path || '(none)') + '</code>';
+                // textContent + manual element build = no innerHTML interpolation of server data
+                var summary = $('output-summary');
+                summary.textContent = 'Saída: ';
+                var code = document.createElement('code');
+                code.textContent = res.data.output_path || '(none)';
+                summary.appendChild(code);
+                // Focus the result so AT users hear it
+                stepOut.setAttribute('tabindex', '-1');
+                stepOut.focus();
             }).catch(function (err) {
                 runBtn.disabled = false;
+                setBusy(false);
                 setStatus('run-status', 'Falha de rede: ' + (err && err.message), 'error');
             });
     });
