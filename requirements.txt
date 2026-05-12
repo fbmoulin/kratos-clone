@@ -35,7 +35,7 @@ flask-limiter==4.1.1
     # via 10-website-downloader
 greenlet==3.3.0
     # via playwright
-gunicorn==25.3.0
+gunicorn==26.0.0
     # via 10-website-downloader
 h11==0.16.0
     # via httpcore
