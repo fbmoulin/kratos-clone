@@ -123,3 +123,48 @@ def test_index_has_focus_visible_outline(client):
 def test_personalize_has_focus_visible_outline(client):
     html = client.get("/personalize").data.decode("utf-8")
     assert ":focus-visible" in html
+
+
+# ── U5: captures datalist on /personalize ────────────────────────────────────
+
+
+def test_personalize_has_captures_datalist(client):
+    """U5: html-dir input must be wired to a `<datalist id=captures-list>`."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert 'list="captures-list"' in html
+    assert 'id="captures-list"' in html
+    assert "<datalist" in html
+
+
+def test_personalize_fetches_captures_on_load(client):
+    """U5: page-load JS must fetch /api/captures to populate the datalist."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert "/api/captures" in html
+    assert "loadCaptures" in html
+
+
+# ── U1: elapsed timer on / ───────────────────────────────────────────────────
+
+
+def test_index_has_elapsed_timer_state(client):
+    """U1: index.html JS must declare timer state for processing feedback."""
+    html = client.get("/").data.decode("utf-8")
+    # Both bookkeeping variables present
+    assert "elapsedTimer" in html
+    assert "elapsedSeconds" in html
+
+
+def test_index_timer_updates_button_text(client):
+    """U1: timer must render `Processando — Ns` (1s resolution) on the button."""
+    html = client.get("/").data.decode("utf-8")
+    # Initial render (0s)
+    assert "Processando — 0s" in html
+    # Tick interval is 1s (1000ms)
+    assert "setInterval" in html
+    assert "1000" in html
+
+
+def test_index_timer_cleared_on_completion(client):
+    """U1: timer must be cleared (no leak) when setLoading(false) is called."""
+    html = client.get("/").data.decode("utf-8")
+    assert "clearInterval(elapsedTimer)" in html

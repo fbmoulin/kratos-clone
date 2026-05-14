@@ -71,7 +71,14 @@
         <input type="file" id="logo" accept="image/png,image/jpeg">
 
         <label for="html-dir">Captura existente (pasta dentro de <code>downloads/</code>)</label>
-        <input type="text" id="html-dir" placeholder="ex: site-A" autocomplete="off">
+        <input
+            type="text"
+            id="html-dir"
+            list="captures-list"
+            placeholder="ex: site-A — comece a digitar para sugestões"
+            autocomplete="off"
+        >
+        <datalist id="captures-list"></datalist>
 
         <button id="extract-btn" type="button">Extrair campos estruturados</button>
         <div class="status" id="extract-status" role="status" aria-live="polite"></div>
@@ -126,6 +133,27 @@
     function setBusy(busy) {
         card.setAttribute('aria-busy', busy ? 'true' : 'false');
     }
+
+    // U5: populate the captures datalist from the backend on page load.
+    // Free-text input is preserved — datalist only adds autocomplete + suggestions.
+    (function loadCaptures() {
+        fetch('/api/captures').then(function (r) {
+            return r.ok ? r.json() : { captures: [] };
+        }).then(function (data) {
+            var dl = $('captures-list');
+            var captures = (data && data.captures) || [];
+            captures.forEach(function (name) {
+                var opt = document.createElement('option');
+                opt.value = name;
+                dl.appendChild(opt);
+            });
+            if (!captures.length) {
+                $('html-dir').placeholder = 'Nenhuma captura ainda — rode um download em /';
+            }
+        }).catch(function () {
+            // Non-fatal: free-text input still works without suggestions
+        });
+    })();
 
     extractBtn.addEventListener('click', function () {
         var brief = ($('brief').value || '').trim();
