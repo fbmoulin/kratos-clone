@@ -126,8 +126,8 @@ gh run list --limit 5
 >
 > A second pre-deploy audit ran 2026-05-10 (`docs/PRE_DEPLOY_AUDIT_2026-05-10.md`)
 > with separate severity scale: both BLOCKERs fixed in PR #21 + the urllib3
-> CVE within M-3 also bumped there. Remaining: 4 MAJOR + 9 MINOR
-> deferred (cryptography 41 bump, doc drift, in-memory rate-limit storage,
+> CVE within M-3 also bumped there. Remaining: 3 MAJOR + 6 MINOR
+> deferred (cryptography 41 bump, in-memory rate-limit storage,
 > Playwright 1.57 memory regression, Dockerfile hardening, etc.).
 
 ---
