@@ -231,6 +231,10 @@
     <script>
         let currentSessionId = null;
         let eventSource = null;
+        // U1: wall-clock elapsed-time feedback during the worker thread.
+        // Operator sees `Processando — 23s` so a long-running capture doesn't look stuck.
+        let elapsedTimer = null;
+        let elapsedSeconds = 0;
 
         const $ = (id) => document.getElementById(id);
 
@@ -342,11 +346,25 @@
             btn.disabled = loading;
             input.disabled = loading;
             spinner.style.display = loading ? 'block' : 'none';
-            btnText.textContent = loading ? 'Processando…' : 'Baixar Réplica';
             card.setAttribute('aria-busy', loading ? 'true' : 'false');
 
             if (loading) {
                 logContainer.classList.add('active');
+                // Start the elapsed-time ticker (U1). 1s resolution — below feels
+                // jittery, above feels laggy. Reset to 0 on each new run.
+                elapsedSeconds = 0;
+                btnText.textContent = 'Processando — 0s';
+                if (elapsedTimer) clearInterval(elapsedTimer);
+                elapsedTimer = setInterval(() => {
+                    elapsedSeconds += 1;
+                    btnText.textContent = 'Processando — ' + elapsedSeconds + 's';
+                }, 1000);
+            } else {
+                if (elapsedTimer) {
+                    clearInterval(elapsedTimer);
+                    elapsedTimer = null;
+                }
+                btnText.textContent = 'Baixar Réplica';
             }
         }
 

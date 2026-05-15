@@ -278,6 +278,34 @@ def health() -> Response:
     return jsonify(info)
 
 
+@app.route("/api/captures", methods=["GET"])
+def list_captures() -> Response:
+    """List capture directories operator can target from /personalize.
+
+    Returns subdirectories of `DOWNLOAD_FOLDER` that are not session UUIDs
+    and not zip files. Sorted alphabetically for deterministic UX.
+
+    No rate-limit + no auth: read-only, low-cost, matches /health precedent.
+    Single-tenant operator-tool; downloads/ has no PII beyond what the
+    operator already chose to capture.
+
+    Closes audit item U5 (free-text html_dir → datalist autocomplete).
+    """
+    captures: list[str] = []
+    if os.path.isdir(DOWNLOAD_FOLDER):
+        for entry in sorted(os.listdir(DOWNLOAD_FOLDER)):
+            path = os.path.join(DOWNLOAD_FOLDER, entry)
+            if not os.path.isdir(path):
+                continue  # skip .zip files and other non-dir entries
+            try:
+                uuid.UUID(entry)
+                continue  # entry parses as UUID → it's a session dir, skip
+            except ValueError:
+                pass
+            captures.append(entry)
+    return jsonify({"captures": captures})
+
+
 @app.route("/start-download", methods=["POST"])
 def start_download() -> tuple[Response, int] | Response:
     """Start download process and return session ID for SSE."""
