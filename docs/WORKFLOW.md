@@ -3,10 +3,12 @@
 > End-to-end pipeline for reliably cloning modern SPA marketing sites and extracting a living design system.
 > Backed by webrecorder/browsertrix patterns, Apify scraping playbook, Anthropic prompt-engineering docs, and DTCG W3C spec.
 
-> **Implementation status (2026-04-27).** Stages 2 and 4 (Track A) are implemented.
-> Stages 1 (`scripts/probe.py`), 3 (`scripts/post_process.py`), 6 (`scripts/validate.py`)
-> are **aspirational** — referenced in this doc as the target architecture but not yet
-> coded. See `ROADMAP.md` for the phased plan and `docs/AUDIT.md` for current findings.
+> **Implementation status (2026-05-10).** All 6 stages shipped.
+> Stages 1 (`scripts/probe.py`, 12 tests), 3 (`scripts/post_process.py`, 6 tests),
+> 6 (`scripts/validate.py`, 21 tests) all landed in Phase 5 (2026-04-27). Stage 4
+> Track B (LLM prompt v2) is the optional polished deliverable; Track A (Python
+> generator) is the deterministic baseline. See `docs/AUDIT.md` for findings status
+> and `ROADMAP.md` for the full phase log.
 
 ---
 

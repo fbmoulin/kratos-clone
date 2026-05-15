@@ -3,9 +3,12 @@
 Phased plan derived from `docs/AUDIT.md` (multi-agent audit, 2026-04-27) and the
 proposed architecture in `docs/WORKFLOW.md` + `docs/PERSONALIZATION.md`.
 
-> **Current state:** MVP capture + design-system extraction works end-to-end on
-> NexusFlow-class Aura.build sites. 3 implementation flaws + zero unit tests + 3
-> aspirational scripts not yet coded. See `TODO.md` for next-sprint actionable items.
+> **Current state (2026-05-10):** All 6 phases shipped. Personalization MVP
+> live (gpt-5-mini Responses + gpt-image-1, hard budget cap, sanitize hardened).
+> All 9 P1 + all 12 P2 audit items closed. mypy strict on every source file.
+> Pre-deploy audit completed (PR #21 merged): both BLOCKERs fixed, urllib3 CVE
+> bumped. See `TODO.md` for opportunistic follow-ups and
+> `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` for the remaining MAJOR/MINOR backlog.
 
 ---
 
@@ -88,7 +91,7 @@ Implemented `docs/PERSONALIZATION.md` as code in branch `feat/personalize-mvp`.
 
 **Out of scope (deferred to follow-on work):**
 - Streaming UI / SSE for run progress (long-poll OK for MVP)
-- A/B harness for the "+70%" claim (P2-9 still open)
+- A/B harness for the "+70%" claim (P2-9 doc-reword closed 2026-05-10; A/B harness itself still deferred)
 - Multi-language brief input (English-only first cut)
 
 ---

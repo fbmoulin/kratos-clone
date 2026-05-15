@@ -4,6 +4,15 @@
 > after a `/clear`. Tells you exactly what's done, what's next, and how to
 > pick up without re-reading the full conversation history.
 
+> **📌 Update 2026-05-10** — this doc is a historical snapshot. Since it was
+> written, Phases 4 (Personalization MVP), 5 (Pipeline completion), and 6
+> (DevEx polish) all shipped, all 12 P2 audit items closed, mypy strict
+> coverage reached every source file, and a pre-deploy audit (PR #21) landed
+> with both BLOCKERs fixed + urllib3 CVE bumped. Current authoritative
+> state lives in `ROADMAP.md` (phase log), `TODO.md` (open work), and
+> `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` (deploy backlog). Test count is now
+> **210 passed + 2 skipped**, not the 74 below.
+
 ---
 
 ## TL;DR
@@ -165,7 +174,7 @@ Ruleset `15582219` on `main`:
 
 Required before starting:
 1. `OPENAI_API_KEY` configured (env var or `.env`, gitignored)
-2. Cost budget (~$0.32/run estimated; $1 hard cap recommended in code)
+2. Cost budget (~$0.32/run forecast with 3 images; ~$0.05/run text-only as measured in Phase 4 live test 2026-04-27; $1 hard cap recommended in code)
 3. Decision: where does brief intake live? (extending `templates/index.html` vs new `/personalize` route)
 
 8 implementation steps from `docs/PERSONALIZATION.md`:
