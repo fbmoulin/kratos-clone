@@ -168,3 +168,48 @@ def test_index_timer_cleared_on_completion(client):
     """U1: timer must be cleared (no leak) when setLoading(false) is called."""
     html = client.get("/").data.decode("utf-8")
     assert "clearInterval(elapsedTimer)" in html
+
+
+# ── U6: step indicator on /personalize ───────────────────────────────────────
+
+
+def test_step_indicator_structure(client):
+    """U6: <nav> landmark with aria-label and ordered list scaffold."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert 'id="step-indicator"' in html
+    assert 'aria-label="Progresso do formulario"' in html
+
+
+def test_step_nodes_present(client):
+    """U6: three step nodes with deterministic IDs for programmatic state updates."""
+    html = client.get("/personalize").data.decode("utf-8")
+    for node_id in ("step-node-1", "step-node-2", "step-node-3"):
+        assert f'id="{node_id}"' in html, f"Missing {node_id}"
+
+
+def test_step1_is_active_on_load(client):
+    """U6: only step 1 carries aria-current=step on initial page render."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert 'id="step-node-1"' in html
+    assert 'aria-current="step"' in html
+    # Exactly one node is "active" on load
+    assert html.count('aria-current="step"') == 1
+
+
+def test_step_connectors_unfilled_on_load(client):
+    """U6: connectors exist but no <li> carries the --filled modifier on load.
+
+    The literal string `step-indicator__connector--filled` appears in the CSS
+    selector and JS source regardless of state, so this test inspects the
+    actual `class=` attribute on each connector <li>.
+    """
+    import re
+
+    html = client.get("/personalize").data.decode("utf-8")
+    for conn_id in ("step-connector-1-2", "step-connector-2-3"):
+        match = re.search(rf'<li id="{conn_id}"[^>]*class="([^"]+)"', html)
+        assert match, f"Connector <li id={conn_id}> not found in rendered HTML"
+        classes = match.group(1).split()
+        assert "step-indicator__connector--filled" not in classes, (
+            f"{conn_id} should not be filled on initial page load (was: {classes})"
+        )

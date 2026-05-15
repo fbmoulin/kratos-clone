@@ -55,11 +55,106 @@
             outline: 3px solid #4a6cf7;
             outline-offset: 2px;
         }
+        /* ─── Step Indicator (U6) ─────────────────────────────── */
+        .step-indicator__nav { margin: 1.5rem 0 1.25rem; }
+        .step-indicator__list {
+            display: flex; align-items: center; list-style: none;
+            margin: 0; padding: 0; gap: 0;
+        }
+        .step-indicator__node {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 6px; flex-shrink: 0;
+        }
+        .step-indicator__connector {
+            flex: 1; height: 2px; background: #d1d5db; position: relative;
+            border-radius: 2px; overflow: hidden; margin-bottom: 22px;
+        }
+        .step-indicator__connector-fill {
+            display: block; position: absolute; inset: 0;
+            background: linear-gradient(90deg, #4a6cf7 0%, #6a8af9 100%);
+            transform: scaleX(0); transform-origin: left center;
+            transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .step-indicator__connector--filled .step-indicator__connector-fill {
+            transform: scaleX(1);
+        }
+        .step-indicator__circle {
+            width: 36px; height: 36px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.875rem; font-weight: 600; line-height: 1;
+            font-family: inherit;
+            transition: background 250ms cubic-bezier(0.4, 0, 0.2, 1),
+                        color 250ms cubic-bezier(0.4, 0, 0.2, 1),
+                        box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .step-indicator__node--upcoming .step-indicator__circle {
+            background: transparent; color: #6b7280; border: 2px solid #d1d5db;
+        }
+        .step-indicator__node--active .step-indicator__circle {
+            background: linear-gradient(135deg, #4a6cf7 0%, #6a8af9 100%);
+            color: #ffffff; border: none;
+            box-shadow: 0 0 0 4px rgba(74, 108, 247, 0.22);
+        }
+        .step-indicator__node--completed .step-indicator__circle {
+            background: #166534; color: #ffffff; border: none; font-size: 0;
+        }
+        .step-indicator__node--completed .step-indicator__circle::after {
+            content: ""; display: block; width: 8px; height: 13px;
+            border-right: 2.5px solid #ffffff; border-bottom: 2.5px solid #ffffff;
+            transform: rotate(45deg) translate(-1px, -2px);
+        }
+        .step-indicator__label {
+            font-size: 0.75rem; font-weight: 500; color: #6b7280;
+            letter-spacing: 0.02em; white-space: nowrap;
+        }
+        .step-indicator__node--active .step-indicator__label {
+            color: #1e293b; font-weight: 600;
+        }
+        .step-indicator__node--completed .step-indicator__label { color: #166534; }
+        @media (prefers-reduced-motion: reduce) {
+            .step-indicator__connector-fill,
+            .step-indicator__circle { transition: none; }
+        }
+        @media (max-width: 479px) {
+            .step-indicator__label { display: none; }
+            .step-indicator__connector { margin-bottom: 0; }
+        }
     </style>
 </head>
 <body>
 <main class="container" aria-busy="false" id="mainCard">
     <h1>Personalizar site clonado</h1>
+
+    <nav id="step-indicator" aria-label="Progresso do formulario" class="step-indicator__nav">
+        <ol class="step-indicator__list" role="list">
+            <li id="step-node-1"
+                class="step-indicator__node step-indicator__node--active"
+                aria-current="step"
+                aria-label="Passo 1 de 3: Brief da marca — atual">
+                <span class="step-indicator__circle" aria-hidden="true">1</span>
+                <span class="step-indicator__label">Brief</span>
+            </li>
+            <li id="step-connector-1-2" class="step-indicator__connector" role="presentation" aria-hidden="true">
+                <span class="step-indicator__connector-fill"></span>
+            </li>
+            <li id="step-node-2"
+                class="step-indicator__node step-indicator__node--upcoming"
+                aria-label="Passo 2 de 3: Confirmar campos — pendente">
+                <span class="step-indicator__circle" aria-hidden="true">2</span>
+                <span class="step-indicator__label">Confirmar</span>
+            </li>
+            <li id="step-connector-2-3" class="step-indicator__connector" role="presentation" aria-hidden="true">
+                <span class="step-indicator__connector-fill"></span>
+            </li>
+            <li id="step-node-3"
+                class="step-indicator__node step-indicator__node--upcoming"
+                aria-label="Passo 3 de 3: Resultado — pendente">
+                <span class="step-indicator__circle" aria-hidden="true">3</span>
+                <span class="step-indicator__label">Resultado</span>
+            </li>
+        </ol>
+    </nav>
+
     <p class="subtitle">Phase 4 — converte um capture em um site com sua marca via OpenAI.</p>
 
     <section id="step-1" aria-labelledby="step-1-heading">
@@ -134,6 +229,40 @@
         card.setAttribute('aria-busy', busy ? 'true' : 'false');
     }
 
+    // U6: Step indicator state machine. Three states per node:
+    // 'upcoming' (outline, muted) → 'active' (filled accent, ring) → 'completed' (green, checkmark).
+    function setStepState(n, state) {
+        var labels = ['', 'Brief da marca', 'Confirmar campos', 'Resultado'];
+        var stateLabel = { upcoming: 'pendente', active: 'atual', completed: 'concluido' };
+        var node = document.getElementById('step-node-' + n);
+        if (!node) return;
+        node.classList.remove(
+            'step-indicator__node--upcoming',
+            'step-indicator__node--active',
+            'step-indicator__node--completed'
+        );
+        node.classList.add('step-indicator__node--' + state);
+        if (state === 'active') {
+            node.setAttribute('aria-current', 'step');
+        } else {
+            node.removeAttribute('aria-current');
+        }
+        node.setAttribute(
+            'aria-label',
+            'Passo ' + n + ' de 3: ' + labels[n] + ' — ' + stateLabel[state]
+        );
+        // Fill the connector leading INTO this node when completed
+        if (state === 'completed' && n > 1) {
+            var conn = document.getElementById('step-connector-' + (n - 1) + '-' + n);
+            if (conn) conn.classList.add('step-indicator__connector--filled');
+        }
+    }
+
+    function markStepComplete(n) {
+        setStepState(n, 'completed');
+        if (n < 3) setStepState(n + 1, 'active');
+    }
+
     // U5: populate the captures datalist from the backend on page load.
     // Free-text input is preserved — datalist only adds autocomplete + suggestions.
     (function loadCaptures() {
@@ -185,6 +314,7 @@
             $('category').value = res.data.category || '';
             $('tone').value = (res.data.tone || []).join(', ');
             step3.classList.remove('hidden');
+            markStepComplete(1);  // U6: Brief done → Confirmar active
             setStatus('extract-status', 'Campos extraídos. Edite e clique em Personalizar.', 'success');
             // Move focus into the next section so keyboard + AT users follow the flow
             $('company').focus();
@@ -233,6 +363,8 @@
                 }
                 setStatus('run-status', 'Pronto.', 'success');
                 stepOut.classList.remove('hidden');
+                markStepComplete(2);  // U6: Confirmar done → Resultado active
+                markStepComplete(3);  // U6: Resultado done → all complete (terminal state)
                 // textContent + manual element build = no innerHTML interpolation of server data
                 var summary = $('output-summary');
                 summary.textContent = 'Saída: ';
