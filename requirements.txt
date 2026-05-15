@@ -10,7 +10,7 @@ beautifulsoup4==4.14.3
     # via 10-website-downloader
 blinker==1.9.0
     # via flask
-certifi==2025.11.12
+certifi==2026.4.22
     # via
     #   httpcore
     #   httpx
