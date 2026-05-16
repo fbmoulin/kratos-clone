@@ -7,6 +7,27 @@ group, with the `0.x` series reflecting pre-1.0 status.
 
 ---
 
+## [Unreleased] — WIP on `feat/personalize-preview-modal` branch
+
+### In progress
+- **Personalize preview modal** (spec at `docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`).
+  Brainstorming + plan-review-cycle established the design across 2 review rounds.
+  Round 1: 10 findings closed (1 Critical / 6 Major / 1 Minor / 2 Advisory).
+  Round 2: 2 Critical closed (dual `<path:>` converter routing bug;
+  iframe `sandbox="allow-scripts"` + ACAO restricted-to-host header for
+  `@font-face` + `credentialless` attribute progressive enhancement).
+  **Remaining R2 findings open**: 2 Major (R2-PRC003 symlink test
+  portability, R2-PRC004 SVG XSS in-iframe phishing CSP defense) + 5 Minor
+  (R2-PRC005 SPA verifiability, R2-PRC006 cache-clear before pipeline
+  failure, R2-PRC007 mock strategy conflict, R2-PRC008 env override
+  fragility, R2-PRC009 test_personalize_app.py existence unverified) +
+  1 Advisory (R2-PRC010 template LOC growth note).
+  Branch tip: `abbc741`. Next session should resume Round 2 walk-through.
+  No code shipped yet; implementation will follow `writing-plans` skill
+  after Round 2 closes.
+
+---
+
 ## [0.4.0] — 2026-05-16 — UI rebrand
 
 ### Added

@@ -218,6 +218,62 @@ Spent ~\$0.105 for the 2 included live tests. Default `pytest -q` skips them.
 
 ---
 
+## Active WIP — `feat/personalize-preview-modal` branch (2026-05-16)
+
+> **State frozen here for next session.** Branch tip: `abbc741`. Tests: 274
+> passing (no new tests yet — code not shipped). No PR open.
+
+**What it is**: Visual preview of personalize output. Modal with 3 tabs
+(Inspecionar iframe / Thumb screenshot / Antes-Depois split). Spec at
+`docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`.
+
+**Workflow used**: `superpowers:brainstorming` → `plan-review-cycle` (2
+rounds). NOT yet to `superpowers:writing-plans`.
+
+**Where we stopped**: Round 2 of plan-review-cycle. 2 Critical closed
+(R2-PRC001 dual `<path:>` converter, R2-PRC002 iframe CORS+credentialless).
+Open in Round 2:
+- R2-PRC003 [Major] symlink test portability
+- R2-PRC004 [Major] SVG XSS in-iframe phishing — needs CSP decision
+- R2-PRC005 [Minor] SPA acceptance criterion unverifiable
+- R2-PRC006 [Minor] cache-clear runs before pipeline failure
+- R2-PRC007 [Minor] external-network test mock strategy conflict
+- R2-PRC008 [Minor] env override test requires module reload
+- R2-PRC009 [Minor] test_personalize_app.py existence unverified
+- R2-PRC010 [Advisory] template LOC growth note
+
+**Next session resume**:
+1. `git checkout feat/personalize-preview-modal` (tip `abbc741`)
+2. Re-read `docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`
+   → "Plan Review Log → Review Round 2" section
+3. Walk through 8 remaining findings (R2-PRC003 through R2-PRC010), one
+   per `plan-review-cycle` skill protocol (concern → research → propose
+   disposition → user approval → update spec + log)
+4. After all R2 closed: `python3 ~/.claude/skills/plan-review-cycle/scripts/validate_plan_review_log.py docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`
+   (must exit 0)
+5. Decide: Round 3 OR `superpowers:writing-plans` to convert spec into
+   tasked implementation plan in `docs/superpowers/plans/`
+6. Implementation per the 8-task "Execution order (TDD-first)" section
+   already in the spec.
+
+## Skill workflow lessons (this session)
+
+- **Brainstorming → spec → plan-review-cycle → writing-plans → execute**
+  is the rigid superpowers chain. Don't skip plan-review-cycle for
+  Alta-complexity work — Round 1 caught 1 Critical and 6 Major bugs in
+  the design; Round 2 caught 2 more Critical that R1 missed.
+- **plan-review-cycle requires per-finding human approval.** Batch
+  approval is a Red Flag per the skill. Walk through severity-ordered;
+  Critical/Major must be Resolved or No Plan Change with rationale.
+- **Visual companion via browser** (`scripts/start-server.sh
+  --project-dir`) is useful for design-direction questions (layout
+  mockups, side-by-side patterns). Use terminal for conceptual A/B
+  questions. Per-question decision, not per-session.
+- **Add `.superpowers/` to .gitignore** before commit — visual companion
+  writes scratch HTML to `<project>/.superpowers/brainstorm/`.
+
+---
+
 ## UI design system (Phase 8, post-2026-05-16 rebrand)
 
 The two templates share a design token system declared in their respective

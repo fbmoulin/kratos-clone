@@ -19,6 +19,29 @@ see `docs/AUDIT.md`.
 
 ---
 
+## 🔄 In Progress — `feat/personalize-preview-modal` branch
+
+> **WIP** since 2026-05-16. Spec finalized via brainstorming + plan-review-cycle.
+> Code NOT yet shipped. Branch tip: `abbc741`.
+
+- [ ] **Personalize preview modal** — adds `/personalize` result-card +
+      fullscreen modal with 3 tabs (Inspecionar iframe / Thumb screenshot /
+      Antes-Depois split). 2 new Flask routes (`personalize_preview` +
+      `personalize_screenshot`), `_validate_html_dir` shared helper,
+      `_render_html_to_png` with atomic write + bounded concurrency
+      semaphore + external network abort.
+      Spec: `docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`.
+
+  **Review status**: Round 1 (10 findings, all closed) + Round 2 (2 Critical
+  closed). Remaining R2 findings to walk through next session: R2-PRC003
+  (symlink test portability), R2-PRC004 (SVG XSS CSP defense), R2-PRC005–009
+  (5 Minor), R2-PRC010 (1 Advisory). After R2 closes, run `python
+  scripts/validate_plan_review_log.py docs/superpowers/specs/2026-05-16-...md`
+  to confirm exit 0, then invoke `superpowers:writing-plans` to convert
+  spec into tasked implementation plan.
+
+---
+
 ## 🟢 Later — opportunistic backlog
 
 Long-tail candidates:
