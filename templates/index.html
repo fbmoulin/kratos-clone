@@ -238,6 +238,62 @@
 
         const $ = (id) => document.getElementById(id);
 
+        // U7: PT-BR error catalog — declarative, peer-to-peer, no apology theater.
+        // Duplicated in personalize.html (single-script-per-template constraint).
+        var ERROR_MESSAGES = {
+            network: { message: "Sem resposta do servidor.", action: "Verifique sua conexão e tente novamente." },
+            by_status: {
+                400: { message: "Requisição inválida.", action: "Revise os campos e tente novamente." },
+                413: { message: "Payload excede o limite permitido.", action: "Reduza o tamanho do arquivo e reenvie." },
+                415: { message: "Formato de envio não suportado.", action: "Confirme que a requisição usa multipart/form-data." },
+                429: { message: "Limite de requisições atingido.", action: "Aguarde antes de tentar novamente." },
+                500: { message: "Erro interno no servidor.", action: "Tente novamente em alguns segundos." }
+            },
+            by_context: {
+                '/start-download': {
+                    400: { message: "URL ausente ou inválida.", action: "Informe uma URL completa e tente novamente." }
+                }
+            },
+            fallback: { message: "Erro inesperado.", action: "Recarregue a página e tente novamente." }
+        };
+
+        function resolveError(opts) {
+            if (opts.networkError) {
+                var n = ERROR_MESSAGES.network;
+                return n.message + ' ' + n.action;
+            }
+            var ctxMap = ERROR_MESSAGES.by_context[opts.endpoint || ''] || {};
+            var entry = (opts.status && ctxMap[opts.status])
+                || (opts.status && ERROR_MESSAGES.by_status[opts.status])
+                || ERROR_MESSAGES.fallback;
+            if (opts.backendError) return opts.backendError + ' ' + entry.action;
+            return entry.message + ' ' + entry.action;
+        }
+
+        // U8: persist last URL across page loads so re-running a variant doesn't need re-typing.
+        // localStorage can throw in private mode → always wrap in try/catch.
+        var LAST_URL_KEY = 'kratos_clone_last_url';
+        function loadLastUrl() {
+            try {
+                var v = localStorage.getItem(LAST_URL_KEY);
+                if (v) $('urlInput').value = v;
+            } catch (_) { /* private mode or storage disabled — non-fatal */ }
+        }
+        function saveLastUrl(url) {
+            try { localStorage.setItem(LAST_URL_KEY, url); } catch (_) { /* ignore */ }
+        }
+
+        // U9: client-side URL validation — short-circuit obviously malformed inputs.
+        // Native browser validation is disabled (form has novalidate) so we render in our
+        // own #errorMessage region with role=alert.
+        function isValidUrl(value) {
+            if (!value) return false;
+            try {
+                var u = new URL(value);
+                return u.protocol === 'http:' || u.protocol === 'https:';
+            } catch (_) { return false; }
+        }
+
         function showError(message) {
             const el = $('errorMessage');
             el.textContent = message;
@@ -256,8 +312,9 @@
 
         function startDownload() {
             const url = $('urlInput').value.trim();
-            if (!url) {
-                showError('Insira uma URL completa (ex.: https://exemplo.com).');
+            // U9: client-side validation — show error inline before network roundtrip
+            if (!isValidUrl(url)) {
+                showError(resolveError({ status: 400, endpoint: '/start-download' }));
                 return;
             }
 
@@ -265,27 +322,35 @@
             setLoading(true);
             clearLogs();
             hideSuccess();
+            // U8: persist the URL so re-running variants is one-click
+            saveLastUrl(url);
 
             fetch('/start-download', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: url })
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    addLog('❌ ' + data.error);
-                    showError(data.error);
+            .then(response => response.json().then(data => ({ status: response.status, data: data })))
+            .then(res => {
+                if (res.status !== 200 || (res.data && res.data.error)) {
+                    var msg = resolveError({
+                        status: res.status,
+                        endpoint: '/start-download',
+                        backendError: res.data && res.data.error
+                    });
+                    addLog('❌ ' + msg);
+                    showError(msg);
                     setLoading(false);
                     return;
                 }
 
-                currentSessionId = data.session_id;
+                currentSessionId = res.data.session_id;
                 connectSSE(currentSessionId);
             })
             .catch(error => {
-                addLog('❌ Erro de conexão: ' + error.message);
-                showError('Erro de conexão: ' + error.message);
+                var msg = resolveError({ networkError: true });
+                addLog('❌ ' + msg);
+                showError(msg);
                 setLoading(false);
             });
         }
@@ -305,7 +370,8 @@
                     showSuccess(sessionId);
                 } else {
                     addLog('❌ Download falhou');
-                    showError('Falha no download. Veja o log para detalhes.');
+                    // SSE-side failure: backend already streamed details to log; just point operator there
+                    showError('Falha no download. Veja o log acima para detalhes.');
                 }
 
                 setTimeout(resetUI, 2000);
@@ -401,6 +467,9 @@
             e.preventDefault();
             if (!$('downloadBtn').disabled) startDownload();
         });
+
+        // U8: restore last URL on page load so operator can re-run without retyping
+        loadLastUrl();
     </script>
 
     <!-- ── Browser observability logger ──────────────────────────────────

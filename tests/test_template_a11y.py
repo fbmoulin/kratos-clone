@@ -213,3 +213,73 @@ def test_step_connectors_unfilled_on_load(client):
         assert "step-indicator__connector--filled" not in classes, (
             f"{conn_id} should not be filled on initial page load (was: {classes})"
         )
+
+
+# ── U7: PT-BR error catalog on both templates ────────────────────────────────
+
+
+def test_index_has_error_catalog(client):
+    """U7: index.html must declare the ERROR_MESSAGES catalog + resolveError helper."""
+    html = client.get("/").data.decode("utf-8")
+    assert "ERROR_MESSAGES" in html
+    assert "resolveError" in html
+    # Catalog must cover network failure + 429 (rate limit) at minimum
+    assert "Sem resposta do servidor" in html
+    assert "Limite de requisições atingido" in html
+
+
+def test_personalize_has_error_catalog(client):
+    """U7: personalize.html must declare the same catalog (single-script-per-template dup)."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert "ERROR_MESSAGES" in html
+    assert "resolveError" in html
+    # Personalize-specific: budget/OpenAI hint on 500
+    assert "OpenAI" in html
+    assert "Brief rejeitado pelo servidor" in html
+
+
+def test_index_no_raw_http_status_in_error_path(client):
+    """U7: no `'HTTP ' + ` interpolation should leak into the error display path."""
+    html = client.get("/").data.decode("utf-8")
+    assert "'HTTP ' + " not in html
+    assert '"HTTP " + ' not in html
+
+
+def test_personalize_no_raw_http_status_in_error_path(client):
+    """U7: same check for personalize.html — error catalog replaces raw HTTP fallback."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert "'HTTP ' + " not in html
+    assert '"HTTP " + ' not in html
+
+
+# ── U8: localStorage URL persistence on index.html ───────────────────────────
+
+
+def test_index_persists_last_url_to_localstorage(client):
+    """U8: index.html must save+restore the last URL across page loads."""
+    html = client.get("/").data.decode("utf-8")
+    assert "localStorage" in html
+    assert "kratos_clone_last_url" in html
+    assert "loadLastUrl" in html
+    assert "saveLastUrl" in html
+
+
+def test_index_localstorage_wrapped_in_try_catch(client):
+    """U8: localStorage access must be try/catch-wrapped (private mode safety)."""
+    html = client.get("/").data.decode("utf-8")
+    # Both helpers must use try/catch — strict check that the literal pattern is present
+    assert html.count("try {") >= 2  # at least loadLastUrl + saveLastUrl
+
+
+# ── U9: client-side URL validation on index.html ─────────────────────────────
+
+
+def test_index_validates_url_client_side(client):
+    """U9: a client-side URL validator must run BEFORE the fetch roundtrip."""
+    html = client.get("/").data.decode("utf-8")
+    assert "isValidUrl" in html
+    # Must use the URL constructor (the canonical, browser-native validator)
+    assert "new URL(" in html
+    # Must restrict to http(s) — file:// or javascript: must not be accepted
+    assert "'http:'" in html or '"http:"' in html
+    assert "'https:'" in html or '"https:"' in html
