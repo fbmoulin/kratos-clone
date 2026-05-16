@@ -1,12 +1,18 @@
-# 🌐 kratos-clone
+# Kratos Clone — Website Downloader
 
-Hardened SPA site cloner + DTCG design system extractor + OpenAI personalization spec.
+Hardened SPA site cloner + DTCG design system extractor + OpenAI personalization.
 Fork of [`asimov-academy/Website-Downloader`](https://github.com/asimov-academy/Website-Downloader)
 with substantial additions on top of the original Flask UI.
 
-> **Status:** MVP operational. Three implementation flaws identified in `docs/AUDIT.md` are
-> tracked in `ROADMAP.md` (Phase 2). Two upstream-overlapping modules co-exist (`downloader.py`
-> = original, `kratos_clone/` = new hardened module). Tests are the largest gap (see Phase 1).
+> **Status (2026-05-16):** All 8 phases shipped. **266 tests passing**, 2 skipped
+> (live OpenAI gated by `RUN_OPENAI_LIVE=1`). mypy strict on every source file
+> (Stage A–D); bandit MEDIUM gate, 0 findings. All 9 P1 + all 12 P2 audit items
+> closed. UX audit U1–U9 + A11y P0 shipped (PRs #23, #24, #29, #30, #31).
+> **Visual rebrand to "Kratos Clone" — dark + vivid orange radial + Bricolage
+> Grotesque display — shipped 2026-05-16 (PR #32).** Two upstream-overlapping
+> modules co-exist (`downloader.py` = original, `kratos_clone/` = new hardened
+> module). See `CHANGELOG.md` for the per-release log and `ROADMAP.md` for
+> phase-by-phase history.
 
 ---
 
@@ -15,10 +21,12 @@ with substantial additions on top of the original Flask UI.
 | Layer | Module | Purpose |
 |-------|--------|---------|
 | **Hardened capture** | `kratos_clone/` | Playwright module with 5 patches (IO pre-fire, DOM-stable, 3-pass scroll, shadow walker, computed-style snapshot) for SPA-heavy sites where the original downloader missed content. CLI: `python -m kratos_clone <url>`. |
-| **Design-system extraction** | `scripts/inventory.py` + `scripts/generate_design_system_v{1,2}.py` | Parse a captured HTML + emit a self-contained `design-system.html` showcase (typography, colors, components, motion, icons) with embedded DTCG token JSON. |
-| **Observability** | `app.py` + `templates/index.html` | `structlog` backend + inline browser logger (`window.onerror`, `unhandledrejection`, `console.error`, slow fetch, SSE close) → `POST /api/client-errors` → same log stream. |
-| **Architecture specs** | `docs/PROMPT_v2.md`, `docs/WORKFLOW.md`, `docs/PERSONALIZATION.md` | Optimized LLM prompt for design-system extraction, 6-stage workflow plan, and OpenAI Responses-API personalization architecture (spec only — not yet implemented). |
-| **Original tool** | `app.py` (UI) + `downloader.py` (legacy capture) | Preserved from upstream. The Flask UI at `http://localhost:5001` still uses `downloader.py`; `kratos_clone/` is invoked via CLI today. |
+| **Design-system extraction** | `scripts/inventory.py` + `scripts/generate_design_system_v2.py` | Parse a captured HTML + emit a self-contained `design-system.html` showcase (typography, colors, components, motion, icons) with embedded DTCG token JSON. |
+| **Personalization** | `personalize/` + `templates/personalize.html` | Brand-personalize a capture via gpt-5-mini Responses + gpt-image-1. Closed-enum strict JSON schema, hard budget cap, sanitize hardened. 3-step UI with tips banner, sample brief, and icebreaker chips. |
+| **Observability** | `app.py` + `templates/*.html` | `structlog` backend + inline browser logger (`window.onerror`, `unhandledrejection`, `console.error`, slow fetch, SSE close) → `POST /api/client-errors` → same log stream. PT-BR error catalog with peer-to-peer tone. |
+| **UI** | `templates/index.html`, `templates/personalize.html` | Rebranded Flask UI with dark + vivid orange radial aesthetic, Bricolage Grotesque display font, motion grammar, WCAG-essential a11y, localStorage URL persistence, client-side validation. |
+| **Architecture specs** | `docs/PROMPT_v2.md`, `docs/WORKFLOW.md`, `docs/PERSONALIZATION.md`, `docs/superpowers/specs/` | LLM prompt for design-system extraction, 6-stage workflow, OpenAI Responses-API personalization architecture, and per-PR spec history. |
+| **Original tool** | `downloader.py` (legacy capture) | Preserved from upstream. The Flask UI at `http://localhost:5001` still uses `downloader.py`; `kratos_clone/` is invoked via CLI today. |
 
 ---
 
