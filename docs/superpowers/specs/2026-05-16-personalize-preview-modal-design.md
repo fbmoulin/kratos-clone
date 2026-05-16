@@ -113,14 +113,23 @@ _PREVIEW_ALLOWED_EXTS = frozenset({
     ".mp3", ".mp4", ".webm",
 })
 
-@app.route("/personalize/preview/<path:html_dir>/<path:asset_path>", methods=["GET"])
+@app.route("/personalize/preview/<html_dir>/<path:asset_path>", methods=["GET"])
 def personalize_preview(html_dir: str, asset_path: str) -> Response:
     """Serve a file from inside downloads/<html_dir>/ for iframe rendering.
 
-    Security layers:
-    1. Extension allowlist (defends against double-extension bypass like foo.html.txt)
-    2. realpath confinement on html_dir (defends against ../, absolute paths)
-    3. send_from_directory native path-traversal protection on asset_path
+    Route signature notes (R2-PRC001, approved 2026-05-16):
+    - <html_dir> uses default <string:> converter (rejects "/") because capture
+      dirs are single-segment per pipeline contract (`Path(html_dir)` used bare
+      in personalize/pipeline.py). Multi-segment URLs 404 at routing layer.
+    - <path:asset_path> remains because assets/foo.png is a legitimate subdir.
+    - Two consecutive <path:...> converters were Werkzeug-ambiguous and made
+      preview + screenshot routes disagree on the html_dir namespace.
+
+    Security layers (defense in depth):
+    1. Routing rejects html_dir containing "/" (Werkzeug default converter; R2-PRC001)
+    2. Extension allowlist (defends against double-extension bypass like foo.html.txt)
+    3. realpath confinement via _validate_html_dir (defends against ../, absolute paths)
+    4. send_from_directory native path-traversal protection on asset_path
     """
     from flask import send_from_directory
     from werkzeug.exceptions import NotFound
@@ -135,14 +144,27 @@ def personalize_preview(html_dir: str, asset_path: str) -> Response:
     if not os.path.isdir(dir_path):
         return ("Directory not found", 404)
     try:
-        return send_from_directory(dir_path, asset_path, max_age=3600)
+        resp = send_from_directory(dir_path, asset_path, max_age=3600)
+        # R2-PRC002 (approved 2026-05-16): set ACAO to the request host so
+        # @font-face works from the opaque-origin iframe (sandbox=allow-scripts).
+        # Restricted to same-host (not "*") — other cross-origin sites cannot
+        # read preview content via JS. Vary: Origin tells caches the response
+        # varies by host (important on multi-host deploys).
+        origin = request.host_url.rstrip("/")
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+        return resp
     except (FileNotFoundError, NotFound):
         return ("Not found", 404)
 
 
-@app.route("/api/personalize/screenshot/<path:html_dir>", methods=["GET"])
+@app.route("/api/personalize/screenshot/<html_dir>", methods=["GET"])
 def personalize_screenshot(html_dir: str) -> Response:
     """Generate (or fetch cached) PNG screenshot of before|after HTML.
+
+    Route signature: <html_dir> uses default <string:> converter for symmetry
+    with personalize_preview (R2-PRC001, approved 2026-05-16). Capture dirs are
+    single-segment per pipeline contract. Multi-segment URLs 404 at routing.
 
     Query: ?which=before|after.
     Cache: downloads/<html_dir>/preview-{before,after}.png.
@@ -303,7 +325,7 @@ with a `result-card`:**
     <div class="preview-modal__body">
       <div role="tabpanel" id="preview-pane-inspect"
            aria-labelledby="preview-tab-inspect" class="preview-pane preview-pane--active">
-        <iframe id="preview-iframe" title="Preview do site personalizado" sandbox="allow-scripts"></iframe>
+        <iframe id="preview-iframe" title="Preview do site personalizado" sandbox="allow-scripts" credentialless></iframe>
         <p class="preview-pane__note">Preview executa scripts em origem isolada — chamadas de API, cookies e storage da página original não funcionam aqui.</p>
       </div>
       <div role="tabpanel" id="preview-pane-thumb"
@@ -441,7 +463,7 @@ performed by `_validate_html_dir(html_dir_str)` per R1-PRC007.
 - `.svg` in `assets/`: 200 + `Content-Type: image/svg+xml`
 - `Cache-Control: max-age=3600` header present
 
-`/personalize/preview/<dir>/<asset_path>` — security rejections (R1-PRC001):
+`/personalize/preview/<dir>/<asset_path>` — security rejections (R1-PRC001 + R2-PRC001):
 - Extension not in allowlist (`.exe`, `.sh`, `.php`): 400
 - Double-extension bypass (`foo.html.txt`): 400 (`.txt` not allowed)
 - Path traversal via `../`: 400
@@ -450,6 +472,7 @@ performed by `_validate_html_dir(html_dir_str)` per R1-PRC007.
 - `html_dir` absolute path injection (`html_dir="/etc"`): 400
 - Missing file in valid dir: 404
 - Missing dir: 404
+- **R2-PRC001:** multi-segment `html_dir` URL `/personalize/preview/run-2026/site-A/file.html` → 404 from Werkzeug router (rejected at routing layer, never reaches handler). Symmetric assertion on screenshot route: `/api/personalize/screenshot/run-2026/site-A` → 404.
 - `GET /api/personalize/screenshot/<dir>?which=after` happy path (mock
   Playwright + monkey-patch `_render_html_to_png` to write fake PNG):
   returns 200 + `Content-Type: image/png`.
@@ -496,6 +519,13 @@ performed by `_validate_html_dir(html_dir_str)` per R1-PRC007.
   R1-PRC006). Assertion checks both: `sandbox="allow-scripts"` literal
   present AND `allow-same-origin` substring ABSENT (to prevent regression
   to the forbidden combo).
+- `iframe` has `credentialless` attribute present (R2-PRC002 — Chrome 110+
+  partitioned-context progressive enhancement; non-Chrome browsers ignore
+  the attribute, no harm).
+- `personalize_preview` response includes `Access-Control-Allow-Origin`
+  header matching `request.host_url.rstrip("/")` AND `Vary: Origin`
+  header (R2-PRC002 — enables @font-face from opaque-origin iframe).
+  Asserts ACAO is NOT `*` (restricted to same-host).
 - `/api/personalize/run` response includes `html_dir` key (extend
   `tests/test_personalize_app.py` if such a test exists, else add minimal
   one).
@@ -516,7 +546,12 @@ performed by `_validate_html_dir(html_dir_str)` per R1-PRC007.
       rendering `personalized.html` **with CSS + images loaded from `assets/`
       subdir under the same path-confined route** (R1-PRC001) **and SPA
       scripts running in opaque origin (R1-PRC006) — animations, carousels,
-      hover/click handlers all work**.
+      hover/click handlers all work**. **Self-hosted `@font-face` fonts work
+      via `Access-Control-Allow-Origin: <host>` header** (R2-PRC002). `fetch()`,
+      `XHR`, and storage APIs from inside iframe fail (opaque origin —
+      acknowledged out-of-scope). Iframe carries `credentialless` attribute
+      for Chrome 110+ partitioned-context isolation; other browsers ignore
+      the attribute (graceful degradation).
 - [ ] Thumb tab lazy-loads screenshot on first click; subsequent visits
       instant from cache.
 - [ ] Antes/Depois tab lazy-loads both screenshots; split 50/50 layout
@@ -557,6 +592,7 @@ performed by `_validate_html_dir(html_dir_str)` per R1-PRC007.
 | Iframe sandboxing blocks scripts in personalized.html | **R1-PRC006 (Round 1, approved 2026-05-16):** Use `sandbox="allow-scripts"` (NOT `allow-same-origin`). SPAs run in opaque-origin context — scripts execute (animations, hover/click, carousels work) but can't access parent window, can't fetch our `/api/*` (same-origin block), can't read cookies. The combo `allow-scripts allow-same-origin` is forbidden by MDN/web.dev guidance because framed page can remove sandbox attribute, fully negating it. Trade-off: AJAX from inside the captured site fails — but those calls target the original (now-gone) backend, so they'd fail anyway. Visual preview is intact. |
 | Personalized HTML references external CDN assets that fail under sandbox | Use existing `kratos_clone/post.py` `rewrite_html_assets` to ensure assets are local before personalize starts (already part of capture pipeline) |
 | External CDN refs cause Playwright `wait_until="load"` to hang on slow trackers | **R1-PRC002 (approved 2026-05-16):** `page.route("**/*", _block_external)` aborts all non-file:// requests at the network layer. Render completes in local-only time (~1-2s) regardless of external network state. Timeout reduced from 15s → 8s. Trade-off: screenshots render external fonts as system fallback; iframe preview is unaffected (uses browser's normal fetch). |
+| Iframe opaque-origin (`sandbox=allow-scripts`) blocks `@font-face` and similar CORS-respecting subresources from same-host | **R2-PRC002 (approved 2026-05-16):** `personalize_preview` adds `Access-Control-Allow-Origin: <request.host_url>` + `Vary: Origin` headers. Restricted to same-host (not `*`) — preview content readable cross-origin only by the same Flask host that served it. Compatible with all browsers. Tag-style subresources (`<img>`, `<link rel=stylesheet>`, `<script src>`) work without CORS via no-cors mode; `@font-face` (which DOES respect CORS) works via the new header. Iframe also gets `credentialless` attribute for Chrome 110+ progressive enhancement (partitioned storage + no cookies in iframe context); Firefox/Safari ignore the unknown attribute (graceful degradation). |
 | Modal layout breaks on narrow viewports | Modal panel max-width 95vw, fallback to vertical stacked tabs + smaller body on `< 720px` |
 | Two operators concurrent on same dir generate dueling screenshots | Acceptable — last write wins on cache; both succeed |
 | Disk fills up with cached PNGs from many runs | Each capture dir holds ≤ 2 PNGs (≤ ~1 MB total); manual cleanup is current operator workflow for `downloads/` |
@@ -648,7 +684,12 @@ after the code they cover.
    panel, 3 tabs styled correctly, iframe scrollable, screenshots fit pane,
    SPA scripts run (R1-PRC006), CSS + images load (R1-PRC001).
 3. If anything visual is wrong, fix CSS + re-run smoke.
-4. Final commit.
+4. **R2-PRC002 visual font check**: load a capture that uses self-hosted
+   `@font-face` (e.g., woff in `assets/`). Open iframe (Inspecionar tab).
+   Use `evaluate(() => getComputedStyle(document.body).fontFamily)` —
+   assert it matches the captured site's declared font (NOT browser
+   fallback `sans-serif`). Confirms ACAO header is working.
+5. Final commit.
 
 **Task 8 — Gate sweep + PR**
 - `pytest -q` (all pass), `ruff check + format` (clean), `mypy` (clean),
@@ -956,3 +997,219 @@ no_change_rationale: |
 human_approver: Felipe
 approval_status: Approved
 approval_date: 2026-05-16
+
+### Review Round 2
+
+reviewer_model: claude-opus-4-7
+reviewer_prompt: code-plan-reviewer@v0.4
+date: 2026-05-16
+spec_reviewed: docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md
+plan_reviewed: docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md
+diverse_critics: false
+
+#### Findings
+
+##### Finding R2-PRC001: personalize_preview route signature collides with two-segment html_dir
+
+status: Resolved
+severity: Critical
+location: Architecture → Backend, route decorator with two consecutive <path:...> converters; Task 1 step 2
+
+reviewer_concern: |
+  Route declares two consecutive <path:html_dir>/<path:asset_path> converters. Werkzeug only allows the LAST positional converter to be <path:...> (greedy); having two greedy converters is undefined/ambiguous and Werkzeug collapses the split — in practice html_dir captures only the first segment and asset_path captures the rest. Screenshot route uses <path:html_dir> alone and accepts foo/bar; preview route's two-path-converter form will reinterpret it. The two routes thus disagree on what html_dir namespace looks like — a contract bug between sibling endpoints.
+
+why_it_matters: |
+  Either capture dirs are flat (then change to <string:html_dir>) or nested (then preview route is broken for nested dirs). Tests will pass on "site-A" but fail in production with multi-segment dirs.
+
+decision: Accept. Inspection of personalize/pipeline.py + personalize/cli.py + kratos_clone/capture.py confirmed capture dirs are SINGLE-SEGMENT per pipeline contract (`Path(html_dir)` used bare; CLI takes single arg). Fix: change both routes to <html_dir> (default <string:> converter rejects "/" at routing layer). preview route keeps <path:asset_path> because assets/foo.png is legitimate subdir. Now both routes share the same html_dir namespace (single-segment) — contract symmetric.
+
+plan_changes_made: |
+  1. Backend section: personalize_preview route signature changed from /personalize/preview/<path:html_dir>/<path:asset_path> to /personalize/preview/<html_dir>/<path:asset_path>. Added docstring block explaining the route-signature rationale, single-segment pipeline contract, and the 4-layer defense-in-depth (routing rejection + extension allowlist + realpath + send_from_directory).
+  2. Backend section: personalize_screenshot route signature changed from /api/personalize/screenshot/<path:html_dir> to /api/personalize/screenshot/<html_dir>. Added cross-reference docstring noting symmetry with preview route.
+  3. Testing strategy: added R2-PRC001 case to backend tests — assert /personalize/preview/run-2026/site-A/file.html and /api/personalize/screenshot/run-2026/site-A both return 404 from Werkzeug router (NOT 400 from handler), confirming routing-layer rejection.
+
+no_change_rationale: |
+
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-16
+
+##### Finding R2-PRC002: iframe sandbox=allow-scripts blocks asset loads via CORS (opaque origin)
+
+status: Resolved
+severity: Critical
+location: Frontend HTML iframe element; Acceptance criteria; R1-PRC006 resolution
+
+reviewer_concern: |
+  With sandbox="allow-scripts" (no allow-same-origin), iframe document is opaque origin. Subresource fetches (img, link stylesheet, script src) work as no-cors. But @font-face requests respect CORS and may fail; fetch()/XHR inside SPA fails (acknowledged); some browsers strict on CSS background-image loads from opaque-origin documents. R1-PRC001 acceptance "CSS + images loaded" and R1-PRC006 "SPA scripts running in opaque origin" are testable on real SPAs and may produce broken-image or CORS console errors.
+
+why_it_matters: |
+  Combination of opaque origin + relative same-host fetches is the exact failure R1-PRC001 was opened to prevent. No test mounts a real SPA inside sandbox to validate.
+
+decision: Accept after expanded research. Evaluated 6 options (ACAO wildcard, credentialless iframe, subdomain isolation per CodePen pattern, srcdoc URL rewriting, accept limitation, shadow DOM). Chose Option A (ACAO header on preview responses) + Option B (credentialless attribute progressive enhancement) with ACAO restricted to request.host_url (not "*"). Tag-style subresources (img/link/script) already work via no-cors mode; @font-face specifically respects CORS and needs the header. Subdomain isolation (CodePen-style) requires multi-origin infra not available on single-host Flask. credentialless adds Chrome-only partitioned context for defense-in-depth at zero cost (other browsers ignore unknown attribute).
+
+plan_changes_made: |
+  1. Architecture → Backend, personalize_preview route: wrapped send_from_directory response — added Access-Control-Allow-Origin: <request.host_url.rstrip("/")> + Vary: Origin headers. Comment explains why same-host (not "*"): preview content readable cross-origin only by Flask host that served it.
+  2. Frontend HTML, iframe element: added "credentialless" attribute alongside sandbox="allow-scripts". Chrome 110+ uses partitioned context (ephemeral, no cookies); other browsers ignore graceful-degradation.
+  3. Risks table: added "Iframe opaque-origin blocks @font-face from same-host" row documenting the ACAO + credentialless combo.
+  4. Testing strategy → Frontend regression: added 2 assertions — (a) iframe has credentialless attribute, (b) personalize_preview response has ACAO set to request.host_url (NOT "*") + Vary: Origin header.
+  5. Acceptance criteria for modal Inspecionar tab: updated to reflect @font-face works via ACAO; acknowledged fetch/XHR/storage failures (opaque origin, out of scope); credentialless graceful degradation noted.
+  6. Execution order Task 7 (Playwright smoke): added R2-PRC002 visual font check step — load capture with self-hosted woff @font-face, assert getComputedStyle(iframe body).fontFamily matches captured site (NOT browser fallback).
+
+no_change_rationale: |
+
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-16
+
+##### Finding R2-PRC003: _validate_html_dir symlink-out test is non-portable and underspecified
+
+status: Open
+severity: Major
+location: Task 3 step 1, TestValidateHtmlDir symlink case
+
+reviewer_concern: |
+  Test described as "use os.symlink in fixture" with no detail. Windows requires Administrator/Developer Mode for os.symlink. Plan doesn't specify skip-on-Windows mark, exact fixture setup (target outside DOWNLOAD_FOLDER, symlink inside), or cleanup.
+
+why_it_matters: |
+  Symlink escape is one of 3 security cases for _validate_html_dir. Flaky/skipped test = unverified security guarantee in affected environments.
+
+decision: pending
+plan_changes_made: |
+no_change_rationale: |
+human_approver:
+approval_status: pending
+approval_date:
+
+##### Finding R2-PRC004: SVG/JSON XSS via in-iframe phishing (CSP defense missing)
+
+status: Open
+severity: Major
+location: _PREVIEW_ALLOWED_EXTS allowlist; R1-PRC001 trust-model rationale
+
+reviewer_concern: |
+  .svg in allowlist is classic XSS vector — SVG can contain inline <script>. Sandbox="allow-scripts" prevents cross-origin escape but does NOT prevent in-iframe phishing (fake login form, keystroke capture). Trust model "operator-captured" is sound for operator's own captures but fails if captured site itself has third-party SVG (CMS, embedded user content). No CSP header defense-in-depth.
+
+why_it_matters: |
+  Operator's authenticated session vulnerable to phishing UI rendered inside iframe.
+
+decision: pending
+plan_changes_made: |
+no_change_rationale: |
+human_approver:
+approval_status: pending
+approval_date:
+
+##### Finding R2-PRC005: Acceptance criterion "SPA scripts work" unverifiable without fixture
+
+status: Open
+severity: Minor
+location: Acceptance criteria; R1-PRC006 resolution
+
+reviewer_concern: |
+  Criterion "animations, carousels, hover/click all work" is unverifiable without concrete SPA fixture. Many SPAs make API calls during hydration that fail and render error states / infinite-loop / unstyled.
+
+why_it_matters: |
+  Task 7 Playwright smoke passes on static site, fails on real captured SPAs.
+
+decision: pending
+plan_changes_made: |
+no_change_rationale: |
+human_approver:
+approval_status: pending
+approval_date:
+
+##### Finding R2-PRC006: personalize_run cache-clear runs BEFORE pipeline — wasted op on failure
+
+status: Open
+severity: Minor
+location: Architecture → Frontend section, personalize_run change #2; R1-PRC008 resolution
+
+reviewer_concern: |
+  Cache clear deletes preview-*.png BEFORE pipeline invocation. If pipeline fails (LLM error, budget exceeded), previous-run personalized.html remains on disk → next screenshot regenerates it → cached as "current". Cache clear was wasted. Test in Task 3 only covers no-op pipeline path; pipeline-failure path uncovered.
+
+why_it_matters: |
+  R1-PRC008 intent "operator never sees previous run's screenshot" subtly fails: on pipeline error, operator sees screenshot of previous-run HTML regenerated as if current.
+
+decision: pending
+plan_changes_made: |
+no_change_rationale: |
+human_approver:
+approval_status: pending
+approval_date:
+
+##### Finding R2-PRC007: External-network-blocked test needs real Playwright but Task 2 mocks it
+
+status: Open
+severity: Minor
+location: Task 2 step 1; Testing strategy "External network blocked at render"
+
+reviewer_concern: |
+  Task 2 step 1: "Mock Playwright via dependency injection or monkey-patch". External-network-blocked test asserts "Spy on _block_external confirms abort() called" — requires real Playwright. Structurally inconsistent.
+
+why_it_matters: |
+  Implementer mocks Playwright per Task 2, then can't write external-network test as specified. Will skip or write degenerate version.
+
+decision: pending
+plan_changes_made: |
+no_change_rationale: |
+human_approver:
+approval_status: pending
+approval_date:
+
+##### Finding R2-PRC008: _RENDER_SEMAPHORE module-level — env override test requires importlib.reload
+
+status: Open
+severity: Minor
+location: Architecture → Backend module-level constants; Task 2 test "Capacity override via env"
+
+reviewer_concern: |
+  _MAX_CONCURRENT_RENDERS read at import time. Env override test requires importlib.reload(app) which re-registers Flask routes, re-inits logger, re-creates rate limiter. Fragile cross-test pollution.
+
+why_it_matters: |
+  Test passes locally but causes flakiness when test order changes. Other tests assume app initialized once.
+
+decision: pending
+plan_changes_made: |
+no_change_rationale: |
+human_approver:
+approval_status: pending
+approval_date:
+
+##### Finding R2-PRC009: test_personalize_app.py existence not verified
+
+status: Open
+severity: Minor
+location: Task 3 step 3
+
+reviewer_concern: |
+  Plan says "Extend tests/test_personalize_app.py" without verifying file exists or currently tests /api/personalize/run. CLAUDE.md mentions test_post.py as example — actual structure not enumerated.
+
+why_it_matters: |
+  Implementer judgment call mid-task. Risk of rework or mocking errors.
+
+decision: pending
+plan_changes_made: |
+no_change_rationale: |
+human_approver:
+approval_status: pending
+approval_date:
+
+##### Finding R2-PRC010: File map LOC growth ~292 LOC in personalize.html — single-template contract pressure
+
+status: Open
+severity: Advisory
+location: File map
+
+reviewer_concern: |
+  Template grows ~292 LOC. CLAUDE.md "single inline <style>+<script> per template" contract — reviewers may push back on growth, request extraction.
+
+why_it_matters: |
+  Not a blocker but worth acknowledging.
+
+decision: pending
+plan_changes_made: |
+no_change_rationale: |
+human_approver:
+approval_status: pending
+approval_date:
