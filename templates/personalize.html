@@ -319,18 +319,150 @@
                 transition-duration: 0.01ms !important;
             }
         }
+        /* ═══════════════════════════════════════════════════════════
+           REFINEMENT v2 (2026-05-16) — aurora + glass + reveal + integrated layout
+           ═══════════════════════════════════════════════════════════ */
+        /* Aurora */
+        .aurora-stage { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+        .aurora-blob { position: absolute; border-radius: 50%; filter: blur(80px);
+            mix-blend-mode: screen; opacity: 0; will-change: transform; }
+        .aurora-blob:nth-child(1) { width: 72vw; height: 72vw; max-width: 900px; max-height: 900px;
+            top: -20%; left: -15%;
+            background: radial-gradient(ellipse, rgba(255,107,53,0.12) 0%, transparent 70%);
+            animation: aurora-fade-in 2s var(--ease-out) 0.4s forwards,
+                       aurora-drift-a 50s ease-in-out 0.4s infinite alternate; }
+        .aurora-blob:nth-child(2) { width: 56vw; height: 56vw; max-width: 720px; max-height: 720px;
+            top: 30%; right: -10%;
+            background: radial-gradient(ellipse, rgba(139,92,246,0.07) 0%, transparent 70%);
+            animation: aurora-fade-in 2s var(--ease-out) 0.8s forwards,
+                       aurora-drift-b 40s ease-in-out 0.8s infinite alternate; }
+        .aurora-blob:nth-child(3) { width: 44vw; height: 44vw; max-width: 560px; max-height: 560px;
+            bottom: -15%; left: 30%;
+            background: radial-gradient(ellipse, rgba(255,107,53,0.07) 0%, transparent 70%);
+            animation: aurora-fade-in 2s var(--ease-out) 1.2s forwards,
+                       aurora-drift-c 55s ease-in-out 1.2s infinite alternate; }
+        @keyframes aurora-fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes aurora-drift-a { from { transform: translate(0,0) scale(1); } to { transform: translate(60px,40px) scale(1.08); } }
+        @keyframes aurora-drift-b { from { transform: translate(0,0) scale(1); } to { transform: translate(-50px,60px) scale(0.95); } }
+        @keyframes aurora-drift-c { from { transform: translate(0,0) scale(1); } to { transform: translate(40px,-30px) scale(1.05); } }
+
+        /* Glassmorphism — primary and ambient variants */
+        .glass {
+            background: rgba(11, 11, 22, 0.55) !important;
+            backdrop-filter: blur(24px) saturate(150%);
+            -webkit-backdrop-filter: blur(24px) saturate(150%);
+            border: 1px solid rgba(255,255,255,0.06) !important;
+            box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.04),
+                        0 24px 48px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.25);
+        }
+        .glass-light {
+            background: rgba(255,255,255,0.025) !important;
+            backdrop-filter: blur(12px) saturate(120%);
+            -webkit-backdrop-filter: blur(12px) saturate(120%);
+            border: 1px solid rgba(255,255,255,0.05) !important;
+        }
+
+        /* Page shell */
+        .page-shell { position: relative; z-index: 1; min-height: 100vh; display: flex; flex-direction: column; }
+        .personalize-main { flex: 1; display: flex; flex-direction: column; align-items: center;
+            padding: 3rem 1.25rem 5rem; gap: 1.25rem; width: 100%; }
+        body { padding-top: 0; align-items: stretch; }
+
+        /* Hero */
+        .hero { display: flex; flex-direction: column; align-items: center; text-align: center;
+            gap: 0.5rem; margin-bottom: 0.5rem; }
+        .hero-eyebrow { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.16em;
+            text-transform: uppercase; color: rgba(255,107,53,0.78); margin: 0; }
+        .hero-wordmark { font-family: "Bricolage Grotesque", system-ui, sans-serif;
+            font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 700; letter-spacing: -0.03em;
+            line-height: 1; margin: 0; color: var(--text-primary); }
+        .wordmark-kratos { color: var(--text-primary); }
+        .wordmark-clone { color: var(--orange-core); text-shadow: 0 0 32px rgba(255,107,53,0.40); }
+
+        /* Tips banner: integrated ambient hint, not a card */
+        .tips-banner { width: 100%; max-width: 680px; margin: 0;
+            border-radius: var(--radius-lg); }
+
+        /* Step indicator + container width tracking */
+        #step-indicator { width: 100%; max-width: 680px; }
+        .container { width: 100%; max-width: 680px; border-radius: var(--radius-xl); padding: 2rem; }
+        @media (max-width: 720px) {
+            .container { max-width: 100%; border-radius: var(--radius-lg); padding: 1.5rem; }
+            .personalize-main { padding: 2rem 1rem 4rem; gap: 1rem; }
+            .tips-banner { max-width: 100%; }
+            #step-indicator { max-width: 100%; }
+        }
+
+        /* Reveal */
+        @keyframes reveal-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .reveal { opacity: 0; animation: reveal-up 700ms var(--ease-out) forwards; }
+        .reveal-d1 { animation-delay: 100ms; }
+        .reveal-d2 { animation-delay: 220ms; }
+        .reveal-d3 { animation-delay: 340ms; }
+        .reveal-d4 { animation-delay: 460ms; }
+
+        /* Button shimmer (extract + run) */
+        #extract-btn, #run-btn { position: relative; overflow: hidden; isolation: isolate;
+            transition: transform var(--duration-base) var(--ease-out), box-shadow var(--duration-base) var(--ease-out); }
+        #extract-btn::after, #run-btn::after { content: ""; position: absolute; inset: 0;
+            background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.14) 50%, transparent 70%);
+            background-size: 200% 100%; background-position-x: -100%;
+            transform: skewX(-8deg); pointer-events: none;
+            transition: background-position-x 600ms var(--ease-out); }
+        #extract-btn:hover:not(:disabled)::after, #run-btn:hover:not(:disabled)::after { background-position-x: 200%; }
+        #extract-btn:hover:not(:disabled), #run-btn:hover:not(:disabled) {
+            transform: translateY(-2px); box-shadow: 0 10px 28px rgba(255,107,53,0.30); }
+        #extract-btn:active, #run-btn:active { transform: translateY(0); transition-duration: 80ms; }
+
+        /* Input focus ring */
+        input:focus, textarea:focus, select:focus {
+            outline: none; border-color: rgba(255,107,53,0.55);
+            box-shadow: 0 0 0 3px rgba(255,107,53,0.15), 0 0 0 1px rgba(255,107,53,0.40);
+            background-color: rgba(255,255,255,0.03);
+        }
+        input, textarea, select {
+            transition: box-shadow 250ms var(--ease-out), border-color 250ms var(--ease-out), background-color 200ms ease;
+        }
+
+        /* Secondary CTA (back link) */
+        .secondary-cta { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;
+            padding-top: 1rem; justify-content: center; }
+        .secondary-cta__link { font-size: 0.8125rem; color: var(--text-secondary); text-decoration: none;
+            display: inline-flex; align-items: center; gap: 0.375rem;
+            transition: color var(--duration-base) var(--ease-out); }
+        .secondary-cta__link:hover { color: var(--text-primary); }
+        .secondary-cta__link:focus-visible { outline: 2px solid var(--orange-core); outline-offset: 3px; border-radius: 2px; }
+        .secondary-cta__arrow { display: inline-block; transition: transform var(--duration-base) var(--ease-out); }
+        .secondary-cta__link:hover .secondary-cta__arrow { transform: translateX(-3px); }
+
+        /* Reduced motion guard */
+        @media (prefers-reduced-motion: reduce) {
+            .aurora-blob { animation: none !important; opacity: 0.45 !important; }
+            .reveal { animation: none !important; opacity: 1 !important; transform: none !important; }
+            #extract-btn::after, #run-btn::after { display: none; }
+            #extract-btn:hover, #run-btn:hover { transform: none; }
+            input, textarea, select { transition: none; }
+            .secondary-cta__arrow { transition: none; }
+        }
     </style>
 </head>
 <body>
-<header class="brand-header js-stagger js-stagger--0" role="banner">
-    <span class="brand-wordmark__logo" aria-label="Kratos Clone">
-        <span class="brand-wordmark__kratos">KRATOS</span><span class="brand-wordmark__clone"> CLONE</span>
-    </span>
-    <span class="brand-wordmark__descriptor">Personalizador</span>
-</header>
-<main class="container js-stagger js-stagger--3" aria-busy="false" id="mainCard">
+<div class="aurora-stage" aria-hidden="true">
+    <div class="aurora-blob"></div>
+    <div class="aurora-blob"></div>
+    <div class="aurora-blob"></div>
+</div>
 
-    <details id="tips-banner" class="tips-banner js-stagger js-stagger--1"
+<div class="page-shell">
+<main class="personalize-main">
+    <header class="hero reveal reveal-d1" role="banner">
+        <p class="hero-eyebrow">Personalizador</p>
+        <h1 class="hero-wordmark" aria-label="Kratos Clone">
+            <span class="wordmark-kratos">KRATOS</span><span class="wordmark-clone"> CLONE</span>
+        </h1>
+    </header>
+
+    <details id="tips-banner" class="tips-banner glass-light reveal reveal-d2"
              ontoggle="try{localStorage.setItem('kc_tips_seen','1')}catch(_){}">
         <summary class="tips-banner__summary" aria-label="Dicas de uso — clique para recolher">
             <span class="tips-banner__summary-label">Dicas de uso</span>
@@ -376,7 +508,7 @@
         })();
     </script>
 
-    <nav id="step-indicator" aria-label="Progresso do formulario" class="step-indicator__nav js-stagger js-stagger--2">
+    <nav id="step-indicator" aria-label="Progresso do formulario" class="step-indicator__nav reveal reveal-d3">
         <ol class="step-indicator__list" role="list">
             <li id="step-node-1"
                 class="step-indicator__node step-indicator__node--active"
@@ -406,6 +538,7 @@
         </ol>
     </nav>
 
+    <section class="container glass reveal reveal-d4" aria-busy="false" id="mainCard" aria-label="Configuração de personalização">
     <p class="subtitle">Phase 4 — converte um capture em um site com sua marca via OpenAI.</p>
 
     <section id="step-1" aria-labelledby="step-1-heading">
@@ -468,12 +601,16 @@
         <div id="output-summary"></div>
     </section>
 
-    <p style="margin-top:1.5rem;font-size:0.85rem;color:#666;text-align:center">
-        <a href="/" style="color:#4a6cf7;text-decoration:none;font-weight:500">
-            ← Voltar para download de site
+    </section>
+
+    <div class="secondary-cta">
+        <a href="/" class="secondary-cta__link" aria-label="Voltar para download de site">
+            <span class="secondary-cta__arrow" aria-hidden="true">←</span>
+            Voltar para download de site
         </a>
-    </p>
+    </div>
 </main>
+</div>
 
 <script>
 (function () {
