@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Website Downloader</title>
+    <title>Kratos Clone — Website Downloader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
     <style>
         * {
             box-sizing: border-box;
@@ -155,6 +158,144 @@
             display: none;
         }
         .error-message.active { display: block; }
+        /* ============================================================
+           KRATOS CLONE — Rebrand v1.0 (2026-05-16)
+           Dark + vivid orange radial + Bricolage Grotesque display.
+           Tokens at :root cascade everywhere; theming overrides win via
+           source order over the legacy light-card styles above.
+           ============================================================ */
+        :root {
+            --ink-base: #0a0a14; --ink-elevated: #111120; --ink-overlay: #1a1a2e; --ink-border: #2a2a42;
+            --orange-core: #ff6b35; --orange-bright: #ff8c5a; --orange-deep: #cc4f1f;
+            --orange-glow: rgba(255,107,53,0.22); --orange-glow-soft: rgba(255,107,53,0.10); --orange-border: rgba(255,107,53,0.30);
+            --text-primary: #f0eee8; --text-secondary: #a89f93; --text-muted: #6b6460;
+            --color-success: #3ecf8e; --color-error: #f87171; --color-warning: #f5a623;
+            --shadow-ambient: 0 2px 8px rgba(0,0,0,0.45); --shadow-key: 0 8px 24px rgba(0,0,0,0.55); --shadow-glow: 0 0 28px rgba(255,107,53,0.18);
+            --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px; --radius-pill: 999px;
+            --duration-fast: 150ms; --duration-base: 200ms; --duration-slow: 400ms;
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        body {
+            background:
+                radial-gradient(circle at 30% 10%, rgba(255,107,53,0.18), transparent 55%),
+                radial-gradient(circle at 85% 90%, rgba(255,107,53,0.10), transparent 50%),
+                var(--ink-base);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            align-items: flex-start;
+            padding-top: 60px;
+        }
+        .container {
+            background: var(--ink-elevated); border: 1px solid var(--ink-border); color: var(--text-primary);
+            box-shadow: var(--shadow-ambient), var(--shadow-key);
+        }
+        h1 { color: var(--text-primary); font-family: "Bricolage Grotesque", system-ui, sans-serif; letter-spacing: -0.02em; }
+        .subtitle { color: var(--text-secondary); }
+        input[type="url"], input[type="text"] {
+            background: var(--ink-overlay); border: 1px solid var(--ink-border); color: var(--text-primary);
+        }
+        input[type="url"]:focus { border-color: var(--orange-core); box-shadow: 0 0 0 3px var(--orange-glow); }
+        input[type="url"]:disabled { background: #1a1a2e; color: var(--text-muted); }
+        #downloadBtn {
+            background: linear-gradient(135deg, var(--orange-core) 0%, var(--orange-bright) 100%);
+            font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 600;
+        }
+        #downloadBtn:hover:not(:disabled) {
+            background: linear-gradient(135deg, var(--orange-bright) 0%, var(--orange-core) 100%);
+            box-shadow: 0 6px 20px rgba(255,107,53,0.4);
+        }
+        #downloadBtn:disabled { background: var(--ink-border); color: var(--text-muted); }
+        button:focus-visible, input:focus-visible, a:focus-visible {
+            outline: 3px solid var(--orange-core); outline-offset: 2px;
+        }
+        .error-message {
+            background: rgba(248,113,113,0.08); color: var(--color-error); border: 1px solid rgba(248,113,113,0.25);
+        }
+        .log-container { background: var(--ink-overlay); border: 1px solid var(--ink-border); }
+        .log-entry { color: var(--text-secondary); border-bottom-color: rgba(255,255,255,0.04); }
+        .log-entry:last-child { color: var(--color-success); }
+        .success-message { box-shadow: var(--shadow-ambient), 0 0 24px rgba(62,207,142,0.25); }
+
+        /* --- Brand wordmark --- */
+        .brand-header {
+            text-align: center; padding: 0 0 1.5rem; margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--ink-border);
+        }
+        .brand-wordmark__logo {
+            font-family: "Bricolage Grotesque", system-ui, sans-serif;
+            font-weight: 700; font-size: clamp(1.625rem, 4vw, 2.25rem); line-height: 1;
+            letter-spacing: -0.03em; display: inline-block;
+        }
+        .brand-wordmark__kratos { color: var(--text-primary); }
+        .brand-wordmark__clone { color: var(--orange-core); text-shadow: 0 0 24px rgba(255,107,53,0.45); }
+        .brand-wordmark__descriptor {
+            display: block; font-family: system-ui, sans-serif; font-weight: 500;
+            font-size: 0.65rem; letter-spacing: 0.22em; text-transform: uppercase;
+            color: var(--text-secondary); margin-top: 0.5rem; padding-top: 0.5rem;
+        }
+
+        /* --- Highlight box --- */
+        .highlight-box {
+            position: relative; margin-top: 2rem; padding: 1.75rem;
+            background: var(--ink-overlay); border: 1px solid var(--orange-border);
+            border-radius: var(--radius-xl); box-shadow: var(--shadow-ambient);
+            overflow: hidden;
+            transition: box-shadow var(--duration-base) var(--ease-out),
+                        transform var(--duration-base) var(--ease-out),
+                        border-color var(--duration-base) var(--ease-out);
+        }
+        .highlight-box::before {
+            content: ""; position: absolute; inset: 0;
+            background: radial-gradient(circle at 85% 15%, rgba(255,107,53,0.10), transparent 65%);
+            pointer-events: none;
+        }
+        .highlight-box:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-ambient), var(--shadow-key), var(--shadow-glow);
+            border-color: rgba(255,107,53,0.55);
+        }
+        .highlight-box > * { position: relative; }
+        .highlight-box__chip {
+            display: inline-block; background: rgba(255,107,53,0.15); color: var(--orange-bright);
+            border: 1px solid var(--orange-border); border-radius: var(--radius-pill);
+            font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+            padding: 0.25rem 0.75rem; margin-bottom: 1rem;
+        }
+        .highlight-box__headline {
+            font-family: "Bricolage Grotesque", system-ui, sans-serif;
+            font-weight: 700; font-size: 1.375rem; line-height: 1.2; letter-spacing: -0.02em;
+            color: var(--text-primary); margin: 0 0 0.75rem;
+        }
+        .highlight-box__desc {
+            font-size: 0.9rem; color: var(--text-secondary); line-height: 1.65;
+            margin: 0 0 1.25rem; max-width: 44ch;
+        }
+        .highlight-box__cta {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            background: linear-gradient(135deg, var(--orange-core) 0%, var(--orange-bright) 100%);
+            color: white !important; font-family: "Bricolage Grotesque", system-ui, sans-serif;
+            font-weight: 600; padding: 0.75rem 1.5rem; border-radius: var(--radius-md);
+            text-decoration: none;
+            transition: transform var(--duration-fast) var(--ease-out),
+                        box-shadow var(--duration-fast) var(--ease-out);
+        }
+        .highlight-box__cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,107,53,0.4); }
+
+        /* --- Motion (page-load stagger + CTA pulse) --- */
+        @keyframes kc-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes kc-pulse-cta { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.015); } }
+        .js-stagger { opacity: 0; animation: kc-fade-up var(--duration-slow) var(--ease-out) both; animation-delay: var(--delay, 0ms); }
+        .js-stagger--0 { --delay: 0ms; } .js-stagger--1 { --delay: 80ms; }
+        .js-stagger--2 { --delay: 160ms; } .js-stagger--3 { --delay: 240ms; }
+        .js-stagger--4 { --delay: 320ms; }
+        .js-pulse { animation: kc-pulse-cta 2.4s var(--ease-out) infinite; }
+        .js-pulse:hover { animation-play-state: paused; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
         /* Visually hidden but available to assistive tech (WCAG label pattern) */
         .sr-only {
             position: absolute;
@@ -177,9 +318,14 @@
     </style>
 </head>
 <body>
-    <main class="container" aria-busy="false" id="mainCard">
-        <h1>🌐 Website Downloader</h1>
-        <p class="subtitle">Baixe uma réplica perfeita de qualquer site, incluindo JS renderizado</p>
+    <header class="brand-header js-stagger js-stagger--0" role="banner">
+        <span class="brand-wordmark__logo" aria-label="Kratos Clone">
+            <span class="brand-wordmark__kratos">KRATOS</span><span class="brand-wordmark__clone"> CLONE</span>
+        </span>
+        <span class="brand-wordmark__descriptor">Website Downloader</span>
+    </header>
+    <main class="container js-stagger js-stagger--2" aria-busy="false" id="mainCard">
+        <p class="subtitle js-stagger js-stagger--1">Baixe uma réplica perfeita de qualquer site, incluindo JS renderizado</p>
 
         <form id="downloadForm" novalidate>
             <div class="input-group">
@@ -198,7 +344,7 @@
 
             <div class="error-message" id="errorMessage" role="alert" aria-live="assertive"></div>
 
-            <button id="downloadBtn" type="submit">
+            <button id="downloadBtn" type="submit" class="js-pulse">
                 <span id="btnText">Baixar Réplica</span>
                 <div class="spinner" id="spinner" style="display: none;" aria-hidden="true"></div>
             </button>
@@ -221,11 +367,18 @@
             ✅ Download pronto! <a href="#" id="downloadLink">Clique aqui se não iniciou automaticamente</a>
         </div>
 
-        <p style="margin-top:1.5rem;font-size:0.85rem;color:#666;text-align:center">
-            <a href="/personalize" style="color:#4a6cf7;text-decoration:none;font-weight:500">
-                ✨ Personalizar uma captura existente →
+        <div id="personalizer-highlight" class="highlight-box js-stagger js-stagger--3" role="complementary" aria-label="Personalizador Kratos Clone">
+            <span class="highlight-box__chip">BETA</span>
+            <h2 class="highlight-box__headline">
+                Personalize com a sua marca<br>via inteligência artificial
+            </h2>
+            <p class="highlight-box__desc">
+                Informe um brief sobre o seu produto e a IA gera um site clonado com identidade visual, textos e tom de voz adequados ao seu negócio.
+            </p>
+            <a href="/personalize" class="highlight-box__cta" aria-label="Abrir o Personalizador Kratos Clone">
+                Abrir personalizador →
             </a>
-        </p>
+        </div>
     </main>
 
     <script>

@@ -283,3 +283,91 @@ def test_index_validates_url_client_side(client):
     # Must restrict to http(s) — file:// or javascript: must not be accepted
     assert "'http:'" in html or '"http:"' in html
     assert "'https:'" in html or '"https:"' in html
+
+
+# ── Rebrand 2026-05-16: tokens, brand, highlight box, tips, brief-assist, motion ──
+
+
+def test_brand_wordmark_in_both_templates(client):
+    """Rebrand: 'KRATOS CLONE' wordmark appears on / and /personalize."""
+    for route in ("/", "/personalize"):
+        html = client.get(route).data.decode("utf-8")
+        assert "KRATOS" in html, f"{route} missing KRATOS wordmark"
+        assert "CLONE" in html, f"{route} missing CLONE wordmark"
+        assert "brand-wordmark__logo" in html, f"{route} missing brand wordmark class"
+
+
+def test_design_tokens_declared(client):
+    """Rebrand: :root CSS custom properties for the token system."""
+    for route in ("/", "/personalize"):
+        html = client.get(route).data.decode("utf-8")
+        assert "--ink-base" in html, f"{route} missing --ink-base token"
+        assert "--orange-core" in html, f"{route} missing --orange-core token"
+
+
+def test_bricolage_grotesque_font_loaded(client):
+    """Rebrand: Google Fonts <link> for Bricolage Grotesque on both routes."""
+    for route in ("/", "/personalize"):
+        html = client.get(route).data.decode("utf-8")
+        assert "Bricolage+Grotesque" in html, f"{route} missing Bricolage Grotesque font link"
+
+
+def test_highlight_box_on_index(client):
+    """Rebrand: highlight box CTA replaces the old plain personalize link."""
+    html = client.get("/").data.decode("utf-8")
+    assert 'id="personalizer-highlight"' in html
+    assert "BETA" in html  # chip badge
+    assert 'href="/personalize"' in html
+    assert "Abrir personalizador" in html
+
+
+def test_tips_banner_on_personalize(client):
+    """Rebrand: collapsible tips banner with 3 sections + cost hint."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert "<details" in html and 'id="tips-banner"' in html
+    assert "<summary" in html
+    assert "Como funciona" in html
+    assert "Dicas para um bom brief" in html
+    assert "Tempo esperado" in html
+
+
+def test_brief_assist_button_and_chips(client):
+    """Rebrand: sample-brief button + 3 icebreaker chips on /personalize."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert 'id="btn-sample-brief"' in html
+    # All 3 icebreaker chips with their domain labels
+    assert "SaaS de produtividade" in html
+    assert "App de fitness" in html
+    assert "Plataforma educacional" in html
+
+
+def test_u6_connector_fill_direction_fixed(client):
+    """U6 fix: completing step N fills connector N→N+1 (forward), not (N-1)→N."""
+    html = client.get("/personalize").data.decode("utf-8")
+    # New (correct) pattern present
+    assert "'step-connector-' + n + '-' + (n + 1)" in html
+    # Old (buggy) pattern absent — guard against regression
+    assert "(n - 1) + '-' + n" not in html
+
+
+def test_prefers_reduced_motion_respected(client):
+    """Rebrand: motion guard for users with prefers-reduced-motion: reduce."""
+    for route in ("/", "/personalize"):
+        html = client.get(route).data.decode("utf-8")
+        assert "prefers-reduced-motion" in html, f"{route} missing motion guard"
+        # Must zero out animation + transition durations
+        assert "animation-duration: 0.01ms" in html, f"{route} guard doesn't disable animations"
+
+
+def test_existing_a11y_contract_preserved(client):
+    """Rebrand guard: prior a11y attributes must survive (no regression)."""
+    index_html = client.get("/").data.decode("utf-8")
+    personalize_html = client.get("/personalize").data.decode("utf-8")
+    # Index a11y
+    assert 'for="urlInput"' in index_html
+    assert 'role="alert"' in index_html
+    assert 'aria-live="polite"' in index_html
+    # Personalize a11y
+    assert 'id="step-indicator"' in personalize_html
+    assert 'aria-label="Progresso do formulario"' in personalize_html
+    assert 'aria-labelledby="step-1-heading"' in personalize_html
