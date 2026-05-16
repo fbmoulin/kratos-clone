@@ -229,6 +229,47 @@
         card.setAttribute('aria-busy', busy ? 'true' : 'false');
     }
 
+    // U7: PT-BR error catalog — declarative, peer-to-peer, no apology theater.
+    // Duplicated in index.html (single-script-per-template constraint).
+    var ERROR_MESSAGES = {
+        network: { message: "Sem resposta do servidor.", action: "Verifique sua conexão e tente novamente." },
+        by_status: {
+            400: { message: "Requisição inválida.", action: "Revise os campos e tente novamente." },
+            413: { message: "Payload excede o limite permitido.", action: "Reduza o tamanho do arquivo e reenvie." },
+            415: { message: "Formato de envio não suportado.", action: "Confirme que a requisição usa multipart/form-data." },
+            429: { message: "Limite de requisições atingido.", action: "Aguarde antes de tentar novamente." },
+            500: { message: "Erro interno no servidor.", action: "Tente novamente em alguns segundos." }
+        },
+        by_context: {
+            '/api/personalize/structure': {
+                400: { message: "Brief rejeitado pelo servidor.", action: "Verifique tamanho (mín. 10, máx. 2 KB) e caracteres de controle." },
+                429: { message: "Limite de 5 requisições por minuto atingido.", action: "Aguarde cerca de 1 minuto e reenvie." },
+                500: { message: "Falha na geração pelo modelo de linguagem.", action: "Verifique status da API OpenAI ou saldo disponível e tente novamente." }
+            },
+            '/api/personalize/run': {
+                400: { message: "Campo ausente ou diretório HTML não localizado.", action: "Confirme que html_dir existe no servidor e que todos os campos estão presentes." },
+                413: { message: "Logo excede 5 MB.", action: "Comprima a imagem abaixo de 5 MB e reenvie." },
+                415: { message: "Content-type incorreto na requisição.", action: "Confirme que o formulário envia multipart/form-data." },
+                429: { message: "Limite de 2 requisições por minuto atingido.", action: "Aguarde cerca de 1 minuto e reenvie." },
+                500: { message: "Falha no processamento pelo modelo ou na geração de imagem.", action: "Verifique status da API OpenAI ou saldo disponível e tente novamente." }
+            }
+        },
+        fallback: { message: "Erro inesperado.", action: "Recarregue a página e tente novamente." }
+    };
+
+    function resolveError(opts) {
+        if (opts.networkError) {
+            var n = ERROR_MESSAGES.network;
+            return n.message + ' ' + n.action;
+        }
+        var ctxMap = ERROR_MESSAGES.by_context[opts.endpoint || ''] || {};
+        var entry = (opts.status && ctxMap[opts.status])
+            || (opts.status && ERROR_MESSAGES.by_status[opts.status])
+            || ERROR_MESSAGES.fallback;
+        if (opts.backendError) return opts.backendError + ' ' + entry.action;
+        return entry.message + ' ' + entry.action;
+    }
+
     // U6: Step indicator state machine. Three states per node:
     // 'upcoming' (outline, muted) → 'active' (filled accent, ring) → 'completed' (green, checkmark).
     function setStepState(n, state) {
@@ -305,7 +346,11 @@
             extractBtn.disabled = false;
             setBusy(false);
             if (!res.ok) {
-                setStatus('extract-status', (res.data && res.data.error) || ('HTTP ' + res.status), 'error');
+                setStatus('extract-status', resolveError({
+                    status: res.status,
+                    endpoint: '/api/personalize/structure',
+                    backendError: res.data && res.data.error
+                }), 'error');
                 return;
             }
             $('company').value = res.data.company || '';
@@ -321,7 +366,7 @@
         }).catch(function (err) {
             extractBtn.disabled = false;
             setBusy(false);
-            setStatus('extract-status', 'Falha de rede: ' + (err && err.message), 'error');
+            setStatus('extract-status', resolveError({ networkError: true }), 'error');
         });
     });
 
@@ -358,7 +403,11 @@
                 runBtn.disabled = false;
                 setBusy(false);
                 if (!res.ok) {
-                    setStatus('run-status', (res.data && res.data.error) || ('HTTP ' + res.status), 'error');
+                    setStatus('run-status', resolveError({
+                        status: res.status,
+                        endpoint: '/api/personalize/run',
+                        backendError: res.data && res.data.error
+                    }), 'error');
                     return;
                 }
                 setStatus('run-status', 'Pronto.', 'success');
@@ -377,7 +426,7 @@
             }).catch(function (err) {
                 runBtn.disabled = false;
                 setBusy(false);
-                setStatus('run-status', 'Falha de rede: ' + (err && err.message), 'error');
+                setStatus('run-status', resolveError({ networkError: true }), 'error');
             });
     });
 })();
