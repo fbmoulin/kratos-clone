@@ -1,4 +1,4 @@
-# CLAUDE.md — kratos-clone
+# CLAUDE.md — Kratos Clone
 
 Guidance for Claude Code (and any other AI agent) working on this repo.
 This file complements (does NOT replace) the user's global `~/.claude/CLAUDE.md`.
@@ -7,7 +7,8 @@ This file complements (does NOT replace) the user's global `~/.claude/CLAUDE.md`
 
 ## Project at a glance
 
-**kratos-clone** is a fork of `asimov-academy/Website-Downloader`. The fork adds:
+**Kratos Clone** (repo slug still `kratos-clone`) is a fork of
+`asimov-academy/Website-Downloader`. The fork adds:
 1. A hardened Playwright capture module (`kratos_clone/`) with 5 SPA-recall patches
 2. A design-system extraction pipeline (`scripts/`) that produces self-contained
    `design-system.html` showcases with embedded DTCG token JSON
@@ -67,7 +68,7 @@ uv run ruff format --check kratos_clone/ scripts/ app.py
 
 ### Tests
 ```bash
-uv run pytest -q                    # 210 passed + 2 skipped, ~3s (live OpenAI gated)
+uv run pytest -q                    # 266 passed + 2 skipped, ~2s (live OpenAI gated)
 uv run pytest tests/test_post.py -v # specific file
 ```
 
@@ -217,6 +218,43 @@ Spent ~\$0.105 for the 2 included live tests. Default `pytest -q` skips them.
 
 ---
 
+## UI design system (Phase 8, post-2026-05-16 rebrand)
+
+The two templates share a design token system declared in their respective
+`<style>` blocks (`:root { --ink-base, --orange-core, ... }`). Single source of
+truth per template — no external CSS file (zero-build constraint preserved).
+
+- **Brand**: "KRATOS CLONE" wordmark (orange "CLONE" with text-shadow glow);
+  descriptor per page ("WEBSITE DOWNLOADER" on `/`, "PERSONALIZADOR" on `/personalize`)
+- **Display font**: Bricolage Grotesque via Google Fonts (variable, 500+700,
+  `display=swap`). DO NOT switch to Space Grotesk / Inter / Geist — they violate
+  the `frontend-design` skill's "no AI slop" rule. Pick something equally
+  distinctive if replacing.
+- **Color palette**: dark base `--ink-base #0a0a14`, ink-elevated card surface,
+  vivid orange `--orange-core #ff6b35` with glow variants. Body uses two-radial
+  gradient atmosphere. Light mode is intentionally not supported.
+- **Motion grammar**: page-load stagger (0/80/160/240ms), CTA pulse (scale
+  1↔1.015 every 2.4s, paused on `:hover`), all wrapped in
+  `prefers-reduced-motion: reduce` guard. When adding new motion, follow the
+  existing keyframes (`kc-fade-up`, `kc-pulse-cta`) and stagger utility classes
+  (`.js-stagger js-stagger--N`).
+- **Shadow system**: composable via `--shadow-ambient / --shadow-key /
+  --shadow-glow`. Resting cards use ambient only; hover lifts to ambient+key+glow.
+
+When adding a new UI component:
+1. Invoke `frontend-design` skill to set the aesthetic direction explicitly
+2. Optionally delegate the design proposal to `ui-ux-designer` agent with a
+   tight brief including the existing tokens + any per-component constraints
+3. Integrate via Edit (don't let the agent rewrite files)
+4. Verify visually with Playwright MCP smoke test (screenshots to `~/`) before PR
+5. Lock a11y + structural contract via `tests/test_template_a11y.py` assertions
+
+The Playwright MCP smoke (load page, take_screenshot, evaluate JS to test
+interactions) caught the U6 connector-fill bug pre-PR — keep using it for any
+non-trivial UI change.
+
+---
+
 ## Things to avoid
 
 - Don't `pip install` anything — use `uv add <pkg>` so it lands in `pyproject.toml` + `uv.lock`.
@@ -225,6 +263,9 @@ Spent ~\$0.105 for the 2 included live tests. Default `pytest -q` skips them.
 - Don't claim a feature is "verified" without a test, and don't claim a measurement is "+N%" without an A/B run.
 - Don't generate synthetic faces for testimonials in the personalization layer (EU AI Act + OpenAI usage policies).
 - Don't write to `extracted/` or `extracted_v2/` directories — they're git-ignored regenerable outputs. Use `./capture` or other ad-hoc dirs for new captures.
+- Don't introduce new hex colors in the templates — extend the token system in `:root` and reference via `var(--...)`. Direct hex breaks design coherence.
+- Don't break the rebrand: zero new fonts, dark-only theme, orange accent reserved for brand + CTA + active state. Light mode is intentionally out of scope.
+- Don't add a build pipeline (webpack/vite/esbuild) — single inline `<script>` and `<style>` per template is the contract.
 
 ---
 

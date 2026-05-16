@@ -1,14 +1,19 @@
-# Roadmap — kratos-clone
+# Roadmap — Kratos Clone
 
-Phased plan derived from `docs/AUDIT.md` (multi-agent audit, 2026-04-27) and the
-proposed architecture in `docs/WORKFLOW.md` + `docs/PERSONALIZATION.md`.
+Phased plan derived from `docs/AUDIT.md` (multi-agent audit, 2026-04-27) and
+the proposed architecture in `docs/WORKFLOW.md` + `docs/PERSONALIZATION.md`.
 
-> **Current state (2026-05-10):** All 6 phases shipped. Personalization MVP
-> live (gpt-5-mini Responses + gpt-image-1, hard budget cap, sanitize hardened).
-> All 9 P1 + all 12 P2 audit items closed. mypy strict on every source file.
-> Pre-deploy audit completed (PR #21 merged): both BLOCKERs fixed, urllib3 CVE
-> bumped. See `TODO.md` for opportunistic follow-ups and
+> **Current state (2026-05-16):** All 6 original phases shipped. Personalization
+> MVP live (gpt-5-mini Responses + gpt-image-1, hard budget cap, sanitize
+> hardened). All 9 P1 + all 12 P2 audit items closed. mypy strict on every
+> source file. **Phase 7 (UX audit U1–U9 + A11y P0) shipped 2026-05-11/15
+> across PRs #23, #24, #29, #30, #31.** **Phase 8 (visual rebrand to
+> "Kratos Clone" — dark + vivid orange radial + Bricolage Grotesque display)
+> shipped 2026-05-16, PR #32.** Pre-deploy audit completed (PR #21 merged):
+> both BLOCKERs fixed, urllib3 CVE bumped. See `TODO.md` for opportunistic
+> follow-ups, `CHANGELOG.md` for the per-release log, and
 > `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` for the remaining MAJOR/MINOR backlog.
+> Test count: 266 passing + 2 skipped.
 
 ---
 
@@ -138,6 +143,52 @@ Implemented `docs/PERSONALIZATION.md` as code in branch `feat/personalize-mvp`.
 
 ---
 
+## Phase 7 — UX audit U1–U9 + A11y P0 ✅ SHIPPED 2026-05-11/15
+
+UX audit on both Flask templates identified 7 a11y categories + 9 user-experience frictions. Shipped across 5 PRs.
+
+| Item | Landed in | Notes |
+|------|-----------|-------|
+| A1–A7 P0 a11y | PR #24 | `<label>` + `<form>`+`submit`, inline `role=alert` error, `role=log`+`aria-live` log, `role=status` success, `<main aria-busy>`, focus migration, `:focus-visible` outlines, contrast AA |
+| Smoke `/start-download → /download-file` | PR #23 | 9 cases monkeypatching `WebsiteDownloader` + `zip_directory`; happy path + `process()→False` + raise + race-during-processing + UUID uniqueness |
+| U1 elapsed timer on `/` | PR #29 | `Processando — Ns` 1s tick in `setLoading()`; reset per run; cleared on done/error |
+| U5 captures dropdown on `/personalize` | PR #29 | New `GET /api/captures` endpoint + `<datalist>` autocomplete + cold-start safe |
+| U6 step indicator on `/personalize` | PR #30 (fix in #32) | `<nav>` 3 nodes + 2 connectors, three states per node, animated `scaleX` connector fill, PT-BR `aria-label`, CSS-only checkmark |
+| U7 PT-BR error catalog | PR #31 | `ERROR_MESSAGES` + `resolveError({...})` helper in both templates; replaces 4 `'HTTP ' + status` + 2 `'Falha de rede: ...'` |
+| U8 localStorage URL persistence | PR #31 | `loadLastUrl()` / `saveLastUrl()`, try/catch-wrapped |
+| U9 client-side URL validation | PR #31 | `isValidUrl()` via native `new URL()`; restricts to http(s) |
+
+**Exit criteria met:** WCAG-essential a11y closed (label/form/aria-live/focus/contrast); operator-facing friction U1–U9 eliminated; backlog audit table empty. 210 → 257 tests.
+
+---
+
+## Phase 8 — Visual rebrand ✅ SHIPPED 2026-05-16
+
+Full rebrand from generic "Website Downloader" to **"Kratos Clone — Website Downloader"** identity. Industrial-luxe aesthetic: dark heavy + vivid orange forge accent. Followed dev-workflow Alta complexity (spec at `docs/superpowers/specs/2026-05-16-ui-rebrand-orange-radial.md`); design by `frontend-design` skill + `ui-ux-designer` agent.
+
+| Component | Landed in | Notes |
+|-----------|-----------|-------|
+| Brand wordmark | PR #32 | "KRATOS CLONE" — orange "CLONE" with text-shadow glow; descriptor per page |
+| Display typography | PR #32 | Bricolage Grotesque via Google Fonts (variable, 500+700, `display=swap`) |
+| Design token system | PR #32 | Full `:root` CSS custom properties; ink/orange scales, semantic colors, multi-layer shadows, 8px grid, durations, easing |
+| Body radial atmosphere | PR #32 | Two-radial orange bloom over `--ink-base #0a0a14`, `background-attachment: fixed` |
+| Highlight box on `/` | PR #32 | BETA chip + headline + orange CTA → `/personalize`; hover-lift + glow; inner `::before` bloom |
+| Tips banner on `/personalize` | PR #32 | Collapsible `<details>` with 3 sections + localStorage flag; zero JS for toggle |
+| Brief assist | PR #32 | "Carregar exemplo pronto" button + 3 icebreaker chips populating realistic ~250-char PT-BR briefs |
+| Motion grammar | PR #32 | Page-load stagger (0/80/160/240ms), CTA pulse, `prefers-reduced-motion: reduce` guard |
+| U6 connector fill direction fix | PR #32 (drive-by) | Was `(n-1)→n` → now `n→(n+1)` forward; caught via Playwright smoke pre-PR |
+
+**Exit criteria met:** brand identity established + display font installed + token system in place + highlight box + tips + icebreakers + motion + a11y preserved (no regression in existing role/aria/landmark contracts). 257 → 266 tests. Playwright smoke screenshots in `/home/fbmoulin/rebrand-0[1-4]-*.png`.
+
+**Out of scope (deferred):**
+- Logo SVG mark (wordmark only)
+- Light-mode toggle (dark-only)
+- Web font self-host (using Google Fonts CDN with preconnect)
+- Progress percentage on download (needs `downloader.py` instrumentation)
+- SSE reconnect logic
+
+---
+
 ## Out of scope (intentionally)
 
 - ESLint/Prettier — no JS bundle; one inline script in `templates/index.html`. The `LintLogObservability` skill was correctly adapted to skip these.
@@ -158,6 +209,8 @@ Implemented `docs/PERSONALIZATION.md` as code in branch `feat/personalize-mvp`.
 | 4 — personalization MVP | 8h | Medium — first OpenAI integration in repo |
 | 5 — pipeline completion | 5h | Low |
 | 6 — devex polish | 3h | Low |
-| **Total** | **~33h** | |
+| 7 — UX audit U1–U9 + a11y P0 | ~8h | Low — well-bounded per-PR |
+| 8 — visual rebrand | ~5h | Medium — broad surface area, mitigated by Playwright smoke |
+| **Total shipped** | **~46h** | All phases complete |
 
-Recommended order: 0 → 1 → 2 → 3 → 6 → 5 → 4 (personalization last so the foundation is solid).
+Recommended order: 0 → 1 → 2 → 3 → 6 → 5 → 4 → 7 → 8 (personalization before UX polish; rebrand last on a stable foundation).
