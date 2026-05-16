@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personalizar site — kratos-clone</title>
+    <title>Personalizar — Kratos Clone</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; }
         body {
@@ -119,13 +122,261 @@
             .step-indicator__label { display: none; }
             .step-indicator__connector { margin-bottom: 0; }
         }
+        /* ============================================================
+           KRATOS CLONE — Rebrand v1.0 (2026-05-16)
+           Dark + vivid orange radial + Bricolage Grotesque display.
+           ============================================================ */
+        :root {
+            --ink-base: #0a0a14; --ink-elevated: #111120; --ink-overlay: #1a1a2e; --ink-border: #2a2a42;
+            --orange-core: #ff6b35; --orange-bright: #ff8c5a; --orange-deep: #cc4f1f;
+            --orange-glow: rgba(255,107,53,0.22); --orange-glow-soft: rgba(255,107,53,0.10); --orange-border: rgba(255,107,53,0.30);
+            --text-primary: #f0eee8; --text-secondary: #a89f93; --text-muted: #6b6460;
+            --color-success: #3ecf8e; --color-error: #f87171; --color-warning: #f5a623;
+            --shadow-ambient: 0 2px 8px rgba(0,0,0,0.45); --shadow-key: 0 8px 24px rgba(0,0,0,0.55); --shadow-glow: 0 0 28px rgba(255,107,53,0.18);
+            --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px; --radius-pill: 999px;
+            --duration-fast: 150ms; --duration-base: 200ms; --duration-slow: 400ms;
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        body {
+            background:
+                radial-gradient(circle at 30% 10%, rgba(255,107,53,0.18), transparent 55%),
+                radial-gradient(circle at 85% 90%, rgba(255,107,53,0.10), transparent 50%),
+                var(--ink-base);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            padding-top: 60px;
+        }
+        .container {
+            background: var(--ink-elevated); border: 1px solid var(--ink-border); color: var(--text-primary);
+            box-shadow: var(--shadow-ambient), var(--shadow-key);
+        }
+        h1 { color: var(--text-primary); font-family: "Bricolage Grotesque", system-ui, sans-serif; letter-spacing: -0.02em; }
+        h2 { color: var(--text-primary); font-family: "Bricolage Grotesque", system-ui, sans-serif; }
+        .subtitle { color: var(--text-secondary); }
+        section { border-top-color: var(--ink-border); }
+        label { color: var(--text-secondary); }
+        textarea, input[type="text"] {
+            background: var(--ink-overlay); border: 1px solid var(--ink-border); color: var(--text-primary);
+        }
+        textarea:focus, input[type="text"]:focus {
+            border-color: var(--orange-core); box-shadow: 0 0 0 3px var(--orange-glow);
+        }
+        input[type="file"] {
+            background: var(--ink-overlay); border: 1px solid var(--ink-border); color: var(--text-secondary); padding: 0.5rem;
+        }
+        button {
+            background: linear-gradient(135deg, var(--orange-core) 0%, var(--orange-bright) 100%);
+            font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 600;
+        }
+        button:hover:not(:disabled) {
+            background: linear-gradient(135deg, var(--orange-bright) 0%, var(--orange-core) 100%);
+            box-shadow: 0 6px 20px rgba(255,107,53,0.3);
+        }
+        button:disabled { background: var(--ink-border); color: var(--text-muted); }
+        button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+            outline: 3px solid var(--orange-core); outline-offset: 2px;
+        }
+        .status { color: var(--text-secondary); }
+        .status.error { color: var(--color-error); }
+        .status.success { color: var(--color-success); }
+        code {
+            background: var(--ink-overlay); color: var(--orange-bright);
+            padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.85em;
+        }
+        /* Step indicator — active state shifts to orange to match brand */
+        .step-indicator__node--upcoming .step-indicator__circle {
+            background: transparent; color: var(--text-muted); border-color: var(--ink-border);
+        }
+        .step-indicator__node--active .step-indicator__circle {
+            background: linear-gradient(135deg, var(--orange-core) 0%, var(--orange-bright) 100%);
+            box-shadow: 0 0 0 4px var(--orange-glow);
+        }
+        .step-indicator__node--active .step-indicator__label { color: var(--text-primary); }
+        .step-indicator__node--upcoming .step-indicator__label { color: var(--text-muted); }
+        .step-indicator__connector { background: var(--ink-border); }
+        .step-indicator__connector-fill {
+            background: linear-gradient(90deg, var(--orange-core) 0%, var(--orange-bright) 100%);
+        }
+        .step-indicator__node--completed .step-indicator__circle { background: var(--color-success); }
+        .step-indicator__node--completed .step-indicator__label { color: var(--color-success); }
+
+        /* --- Brand wordmark --- */
+        .brand-header {
+            text-align: center; padding: 0 0 1.5rem; margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--ink-border);
+        }
+        .brand-wordmark__logo {
+            font-family: "Bricolage Grotesque", system-ui, sans-serif;
+            font-weight: 700; font-size: clamp(1.5rem, 4vw, 2.25rem); line-height: 1;
+            letter-spacing: -0.03em; display: inline-block;
+        }
+        .brand-wordmark__kratos { color: var(--text-primary); }
+        .brand-wordmark__clone { color: var(--orange-core); text-shadow: 0 0 24px rgba(255,107,53,0.45); }
+        .brand-wordmark__descriptor {
+            display: block; font-family: system-ui, sans-serif; font-weight: 500;
+            font-size: 0.65rem; letter-spacing: 0.22em; text-transform: uppercase;
+            color: var(--text-secondary); margin-top: 0.5rem; padding-top: 0.5rem;
+        }
+
+        /* --- Tips banner --- */
+        .tips-banner {
+            background: var(--ink-overlay); border: 1px solid var(--ink-border);
+            border-radius: var(--radius-lg); margin-bottom: 1.5rem; overflow: hidden;
+            box-shadow: var(--shadow-ambient);
+        }
+        .tips-banner__summary {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.875rem 1.25rem; cursor: pointer; user-select: none; list-style: none;
+        }
+        .tips-banner__summary::-webkit-details-marker { display: none; }
+        .tips-banner__summary::marker { display: none; }
+        .tips-banner__summary:hover { background: rgba(255,255,255,0.02); }
+        .tips-banner__summary-label {
+            font-family: "Bricolage Grotesque", system-ui, sans-serif;
+            font-size: 0.78rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+            color: var(--orange-bright);
+        }
+        .tips-banner__chevron {
+            display: inline-block; width: 8px; height: 8px;
+            border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted);
+            transform: rotate(45deg);
+            transition: transform var(--duration-base) var(--ease-out);
+        }
+        .tips-banner:not([open]) .tips-banner__chevron { transform: rotate(-45deg); }
+        .tips-banner__body {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem; padding: 0 1.25rem 1.25rem;
+            border-top: 1px solid var(--ink-border);
+        }
+        .tips-banner__section-title {
+            font-family: "Bricolage Grotesque", system-ui, sans-serif;
+            font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+            color: var(--orange-core); margin: 1rem 0 0.5rem;
+        }
+        .tips-banner__list { margin: 0; padding-left: 1.25rem; color: var(--text-secondary); font-size: 0.85rem; line-height: 1.6; }
+        .tips-banner__list li + li { margin-top: 0.4rem; }
+        .tips-banner__list--ordered { list-style: decimal; }
+        .tips-banner__time-grid { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.5rem; }
+        .tips-banner__time-value {
+            font-family: "Bricolage Grotesque", system-ui, sans-serif;
+            font-size: 1.4rem; font-weight: 700; color: var(--orange-core); line-height: 1;
+        }
+        .tips-banner__time-label { font-size: 0.78rem; color: var(--text-secondary); margin-left: 0.25rem; }
+        .tips-banner__time-sep { font-size: 1.1rem; color: var(--text-muted); }
+        .tips-banner__cost-hint { font-size: 0.78rem; color: var(--text-muted); margin: 0; }
+        @media (max-width: 600px) { .tips-banner__body { grid-template-columns: 1fr; gap: 1rem; } }
+
+        /* --- Brief assist (sample button + icebreaker chips) --- */
+        .brief-assist { margin-bottom: 0.75rem; }
+        .brief-assist__header {
+            display: flex; align-items: baseline; justify-content: space-between;
+            flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;
+        }
+        .brief-assist__label { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); }
+        .brief-assist__sample-btn {
+            background: transparent; border: 1px solid var(--ink-border); border-radius: var(--radius-pill);
+            color: var(--text-secondary); font-family: system-ui, sans-serif; font-weight: 500;
+            font-size: 0.78rem; padding: 0.25rem 0.85rem; cursor: pointer; width: auto;
+            transition: border-color var(--duration-fast) var(--ease-out),
+                        color var(--duration-fast) var(--ease-out),
+                        background var(--duration-fast) var(--ease-out);
+            box-shadow: none;
+        }
+        .brief-assist__sample-btn:hover:not(:disabled) {
+            background: var(--orange-glow-soft); border-color: var(--orange-core); color: var(--orange-bright);
+            box-shadow: none;
+        }
+        .brief-assist__chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+        .brief-assist__chip {
+            background: transparent; border: 1px solid var(--ink-border); border-radius: var(--radius-pill);
+            color: var(--text-muted); font-family: system-ui, sans-serif; font-weight: 500;
+            font-size: 0.78rem; padding: 0.25rem 0.9rem; cursor: pointer; width: auto;
+            transition: border-color var(--duration-fast) var(--ease-out),
+                        color var(--duration-fast) var(--ease-out),
+                        background var(--duration-fast) var(--ease-out),
+                        transform var(--duration-fast) var(--ease-spring);
+            box-shadow: none;
+        }
+        .brief-assist__chip:hover:not(:disabled) {
+            border-color: rgba(255,107,53,0.5); color: var(--orange-bright);
+            background: var(--orange-glow-soft); transform: translateY(-1px); box-shadow: none;
+        }
+        .brief-assist__chip.is-active {
+            border-color: var(--orange-core); color: var(--orange-core); background: rgba(255,107,53,0.12);
+        }
+
+        /* --- Motion --- */
+        @keyframes kc-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes kc-pulse-cta { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.015); } }
+        .js-stagger { opacity: 0; animation: kc-fade-up var(--duration-slow) var(--ease-out) both; animation-delay: var(--delay, 0ms); }
+        .js-stagger--0 { --delay: 0ms; } .js-stagger--1 { --delay: 80ms; }
+        .js-stagger--2 { --delay: 160ms; } .js-stagger--3 { --delay: 240ms; }
+        .js-pulse { animation: kc-pulse-cta 2.4s var(--ease-out) infinite; }
+        .js-pulse:hover { animation-play-state: paused; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
-<main class="container" aria-busy="false" id="mainCard">
-    <h1>Personalizar site clonado</h1>
+<header class="brand-header js-stagger js-stagger--0" role="banner">
+    <span class="brand-wordmark__logo" aria-label="Kratos Clone">
+        <span class="brand-wordmark__kratos">KRATOS</span><span class="brand-wordmark__clone"> CLONE</span>
+    </span>
+    <span class="brand-wordmark__descriptor">Personalizador</span>
+</header>
+<main class="container js-stagger js-stagger--3" aria-busy="false" id="mainCard">
 
-    <nav id="step-indicator" aria-label="Progresso do formulario" class="step-indicator__nav">
+    <details id="tips-banner" class="tips-banner js-stagger js-stagger--1"
+             ontoggle="try{localStorage.setItem('kc_tips_seen','1')}catch(_){}">
+        <summary class="tips-banner__summary" aria-label="Dicas de uso — clique para recolher">
+            <span class="tips-banner__summary-label">Dicas de uso</span>
+            <span class="tips-banner__chevron" aria-hidden="true"></span>
+        </summary>
+        <div class="tips-banner__body">
+            <div class="tips-banner__section">
+                <h3 class="tips-banner__section-title">Como funciona</h3>
+                <ol class="tips-banner__list tips-banner__list--ordered">
+                    <li>Informe a pasta com o capture existente (selecione na lista abaixo).</li>
+                    <li>Descreva o seu produto em um brief: público-alvo, tom de voz e diferenciais.</li>
+                    <li>A IA gera uma versão personalizada com identidade visual e textos do seu negócio.</li>
+                </ol>
+            </div>
+            <div class="tips-banner__section">
+                <h3 class="tips-banner__section-title">Dicas para um bom brief</h3>
+                <ul class="tips-banner__list">
+                    <li>Mencione segmento, público-alvo e um diferencial concreto do produto.</li>
+                    <li>Indique o tom de voz: técnico, acessível, corporativo ou descontraído.</li>
+                    <li>De 3 a 5 sentenças costumam ser suficientes — clareza supera volume.</li>
+                </ul>
+            </div>
+            <div class="tips-banner__section tips-banner__section--time">
+                <h3 class="tips-banner__section-title">Tempo esperado</h3>
+                <div class="tips-banner__time-grid">
+                    <span class="tips-banner__time-value">~30s</span>
+                    <span class="tips-banner__time-label">extração</span>
+                    <span class="tips-banner__time-sep" aria-hidden="true">+</span>
+                    <span class="tips-banner__time-value">~70s</span>
+                    <span class="tips-banner__time-label">personalização</span>
+                </div>
+                <p class="tips-banner__cost-hint">Custo estimado de API por execução completa: menos de US$ 0,05.</p>
+            </div>
+        </div>
+    </details>
+    <script>
+        // First-visit-open / subsequent-visit-closed via localStorage flag
+        (function () {
+            try {
+                var banner = document.getElementById('tips-banner');
+                if (banner && localStorage.getItem('kc_tips_seen') === '1') banner.removeAttribute('open');
+            } catch (_) { /* private mode → keep default open */ }
+        })();
+    </script>
+
+    <nav id="step-indicator" aria-label="Progresso do formulario" class="step-indicator__nav js-stagger js-stagger--2">
         <ol class="step-indicator__list" role="list">
             <li id="step-node-1"
                 class="step-indicator__node step-indicator__node--active"
@@ -159,7 +410,22 @@
 
     <section id="step-1" aria-labelledby="step-1-heading">
         <h2 id="step-1-heading">1. Brief da marca</h2>
-        <label for="brief">Descreva sua empresa em 2–3 frases</label>
+
+        <div class="brief-assist" id="brief-assist">
+            <div class="brief-assist__header">
+                <label class="brief-assist__label" for="brief">Descreva sua empresa em 2–3 frases</label>
+                <button type="button" id="btn-sample-brief" class="brief-assist__sample-btn"
+                        aria-label="Carregar um brief de exemplo genérico no campo">
+                    Carregar exemplo pronto
+                </button>
+            </div>
+            <div class="brief-assist__chips" role="group" aria-label="Exemplos por segmento — clique para carregar no campo">
+                <button type="button" class="brief-assist__chip" data-brief-key="saas">SaaS de produtividade</button>
+                <button type="button" class="brief-assist__chip" data-brief-key="fitness">App de fitness</button>
+                <button type="button" class="brief-assist__chip" data-brief-key="edu">Plataforma educacional</button>
+            </div>
+        </div>
+
         <textarea id="brief" placeholder="Ex: ferramenta de produtividade para times remotos pequenos, foco em onboarding rápido, tom direto e amigável." aria-describedby="extract-status"></textarea>
 
         <label for="logo">Logo (PNG ou JPEG, &le; 2 MB)</label>
@@ -175,7 +441,7 @@
         >
         <datalist id="captures-list"></datalist>
 
-        <button id="extract-btn" type="button">Extrair campos estruturados</button>
+        <button id="extract-btn" type="button" class="js-pulse">Extrair campos estruturados</button>
         <div class="status" id="extract-status" role="status" aria-live="polite"></div>
     </section>
 
@@ -292,9 +558,11 @@
             'aria-label',
             'Passo ' + n + ' de 3: ' + labels[n] + ' — ' + stateLabel[state]
         );
-        // Fill the connector leading INTO this node when completed
-        if (state === 'completed' && n > 1) {
-            var conn = document.getElementById('step-connector-' + (n - 1) + '-' + n);
+        // Fill the connector leading OUT of this node when completed (toward n+1).
+        // Bug fix 2026-05-16: previously filled connector (n-1)→n which left a
+        // grey gap between completed step and the newly-active next step.
+        if (state === 'completed' && n < 3) {
+            var conn = document.getElementById('step-connector-' + n + '-' + (n + 1));
             if (conn) conn.classList.add('step-indicator__connector--filled');
         }
     }
@@ -428,6 +696,52 @@
                 setBusy(false);
                 setStatus('run-status', resolveError({ networkError: true }), 'error');
             });
+    });
+
+    // Brief-assist: sample brief + 3 icebreaker chips populate the textarea
+    var GENERIC_BRIEF =
+        'Plataforma B2B de gestão de tarefas para equipes remotas. ' +
+        'Público-alvo: gestores de projeto e times técnicos de 5 a 50 pessoas. ' +
+        'Diferencial: automação de dependências entre tarefas via IA. ' +
+        'Tom de voz: direto, profissional, sem jargão excessivo.';
+    var BRIEF_EXAMPLES = {
+        saas:
+            'SaaS de produtividade para profissionais autônomos e pequenas equipes. ' +
+            'Centraliza tarefas, notas e compromissos em um único painel com foco em fluxo sem distrações. ' +
+            'Tom de voz: objetivo, moderno e confiante — sem clichês de "revolucionar o mercado".',
+        fitness:
+            'App de fitness para adultos entre 30 e 50 anos que treinam em casa sem equipamento. ' +
+            'Diferencial: adaptação automática do plano conforme o progresso e o tempo disponível. ' +
+            'Tom de voz: encorajador e prático, sem linguagem de academia ou jargão técnico.',
+        edu:
+            'Plataforma educacional de cursos técnicos online para profissionais em requalificação. ' +
+            'Cursos de 4 a 12 semanas, com certificado reconhecido pelo mercado e mentoria ao vivo. ' +
+            'Tom de voz: sério e acessível — voltado a quem busca resultado concreto, não entretenimento.'
+    };
+    function injectBrief(text) {
+        var ta = $('brief');
+        if (!ta) return;
+        ta.value = text;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        ta.focus();
+    }
+    function clearActiveChips() {
+        document.querySelectorAll('.brief-assist__chip.is-active').forEach(function (el) {
+            el.classList.remove('is-active');
+        });
+    }
+    var sampleBtn = $('btn-sample-brief');
+    if (sampleBtn) {
+        sampleBtn.addEventListener('click', function () { clearActiveChips(); injectBrief(GENERIC_BRIEF); });
+    }
+    document.querySelectorAll('.brief-assist__chip[data-brief-key]').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            var key = this.dataset.briefKey;
+            if (!BRIEF_EXAMPLES[key]) return;
+            clearActiveChips();
+            this.classList.add('is-active');
+            injectBrief(BRIEF_EXAMPLES[key]);
+        });
     });
 })();
 </script>
