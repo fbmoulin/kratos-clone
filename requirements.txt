@@ -17,7 +17,7 @@ certifi==2026.4.22
     #   requests
 charset-normalizer==3.4.7
     # via requests
-click==8.3.3
+click==8.4.0
     # via flask
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
@@ -43,7 +43,7 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via openai
-idna==3.14
+idna==3.15
     # via
     #   anyio
     #   httpx
@@ -61,7 +61,7 @@ markupsafe==3.0.3
     #   flask
     #   jinja2
     #   werkzeug
-openai==2.36.0
+openai==2.37.0
     # via 10-website-downloader
 ordered-set==4.1.0
     # via flask-limiter
@@ -71,7 +71,7 @@ packaging==26.2
     #   limits
 pillow==12.2.0
     # via 10-website-downloader
-playwright==1.59.0
+playwright==1.60.0
     # via 10-website-downloader
 psutil==7.2.2
     # via 10-website-downloader
@@ -83,7 +83,7 @@ pyee==13.0.1
     # via playwright
 python-dotenv==1.2.2
     # via 10-website-downloader
-requests==2.34.0
+requests==2.34.2
     # via 10-website-downloader
 sniffio==1.3.1
     # via openai
