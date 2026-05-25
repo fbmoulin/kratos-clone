@@ -68,7 +68,7 @@ uv run ruff format --check kratos_clone/ scripts/ app.py
 
 ### Tests
 ```bash
-uv run pytest -q                    # 266 passed + 2 skipped, ~2s (live OpenAI gated)
+uv run pytest -q                    # 274 passed + 2 skipped, ~2s (live OpenAI gated)
 uv run pytest tests/test_post.py -v # specific file
 ```
 
@@ -127,8 +127,10 @@ gh run list --limit 5
 >
 > A second pre-deploy audit ran 2026-05-10 (`docs/PRE_DEPLOY_AUDIT_2026-05-10.md`)
 > with separate severity scale: both BLOCKERs fixed in PR #21 + the urllib3
-> CVE within M-3 also bumped there. Remaining: 3 MAJOR + 6 MINOR
-> deferred (cryptography 41 bump, in-memory rate-limit storage,
+> CVE within M-3 also bumped there. M-3 cryptography portion closed
+> transitively by PR #38 (openai 2.32 → 2.38 dropped cryptography from the
+> dep closure; `pip-audit -r requirements.txt` reports 0 vulns).
+> Remaining: 2 MAJOR + 6 MINOR deferred (in-memory rate-limit storage,
 > Playwright 1.57 memory regression, Dockerfile hardening, etc.).
 
 ---

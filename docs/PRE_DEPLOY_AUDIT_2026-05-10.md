@@ -14,7 +14,7 @@
 | Severity | Count | Status |
 |---|---|---|
 | 🔴 BLOCKER | 2 | **Both fixed** in PR #21. |
-| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 split: urllib3 fixed in PR #21; cryptography deferred. M-4, M-5 deferred. |
+| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 fully closed (urllib3 fixed in PR #21; cryptography dropped from transitive closure by PR #38 openai bump). M-4, M-5 deferred. |
 | 🟢 MINOR  | 9 | N-1, N-2 closed in follow-up docs PR. N-3 resolved via B-2 fix. N-4..N-9 deferred. |
 
 The container deploy via Render → Docker → `requirements.txt` was broken today: `requirements.txt` was missing 4 of the 11 declared runtime dependencies, including two (`structlog`, `flask-limiter`) imported at module level in `app.py`. `import app` raised `ModuleNotFoundError` before gunicorn could bind, so the service would fail health-check before serving a single request. The second BLOCKER (no `.env.example`) meant operators had no reference for the 24 env vars the app reads, including `OPENAI_API_KEY` — which fails silently per-request, not at boot.
@@ -74,7 +74,7 @@ BOOT OK — 10 routes
 | B-2 | 🔴 BLOCKER | No `.env.example`; `OPENAI_API_KEY` undocumented and fails per-request | `personalize/openai_client.py:80`, `render.yaml:6-8` | **FIXED** in this PR |
 | ~~M-1~~ | 🟡 MAJOR  | `CLAUDE.md` "Known issues" stale (claims 7 P2 items remain, actually 0) | `CLAUDE.md:109-117`, `docs/AUDIT.md` (all P2-1..P2-12 struck-through) | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — CLAUDE.md "Known issues" rewritten to reflect all P2 closed + pre-deploy-audit summary |
 | ~~M-2~~ | 🟡 MAJOR  | `WORKFLOW.md` claims Stages 1, 3, 6 aspirational — all shipped | `docs/WORKFLOW.md:6-9` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — status banner updated to "all 6 stages shipped 2026-04-27" |
-| M-3 | 🟡 MAJOR  | Transitive CVEs: `urllib3 2.6.2` (CVE-2026-21441) bumped to 2.7.0 in this PR; `cryptography v41.0.7` (6 CVEs) still pending | OSV scanner (CodeRabbit), `pip-audit` output | urllib3 **FIXED** in this PR; cryptography DEFERRED |
+| M-3 | 🟡 MAJOR  | Transitive CVEs: `urllib3 2.6.2` (CVE-2026-21441); `cryptography v41.0.7` (6 CVEs) | OSV scanner (CodeRabbit), `pip-audit` output | **CLOSED**: urllib3 fixed in PR #21; cryptography dropped from deps by PR #38 openai bump. `pip-audit -r requirements.txt` reports 0 vulns as of 2026-05-25 |
 | M-4 | 🟡 MAJOR  | `RATE_LIMIT_STORAGE_URI=memory://` default; per-worker buckets if `--workers >1` | `app.py:237`, `entrypoint.sh:15` | DEFERRED |
 | M-5 | 🟡 MAJOR  | Playwright 1.57 launches Chrome for Testing instead of Chromium — memory regression on 512 MB tier | [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489), `pyproject.toml:14`, `entrypoint.sh:9-12` | DEFERRED |
 | ~~N-1~~ | 🟢 MINOR  | `CLAUDE.md` claims "52 tests" — actual 210 | `CLAUDE.md:70`, `pytest -q` output | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — line updated to "210 passed + 2 skipped, ~3s" |
@@ -145,11 +145,9 @@ This file is now a build artifact — regenerable from `uv.lock` whenever deps c
 
 ### M-3 — Transitive CVEs (urllib3 FIXED, cryptography DEFERRED)
 
-**urllib3 — FIXED in this PR.** CodeRabbit's OSV scanner flagged `urllib3==2.6.2` (CVE-2026-21441 / GHSA-38jv-5279-wg99): HIGH-severity decompression-bomb when following HTTP redirects with `preload_content=False`. Pulled transitively by `requests`. The exposed call site is `kratos_clone/capture.py` (visits user-supplied URLs); a malicious redirect target could exploit this. Bumped via `uv lock --upgrade-package urllib3` to **2.7.0**, requirements.txt re-exported (commit 67ad8ce). Verified post-bump: pytest 210/2 skipped, mypy 21 src OK, app boots with all 10 routes.
+**urllib3 — FIXED in PR #21.** CodeRabbit's OSV scanner flagged `urllib3==2.6.2` (CVE-2026-21441 / GHSA-38jv-5279-wg99): HIGH-severity decompression-bomb when following HTTP redirects with `preload_content=False`. Pulled transitively by `requests`. The exposed call site is `kratos_clone/capture.py` (visits user-supplied URLs); a malicious redirect target could exploit this. Bumped to **2.7.0** in PR #21 (uv.lock); the requirements.txt re-export landed later in PR #38 (lock/requirements drift sync, 2026-05-25). Verified post-bump: pytest green, mypy 21 src OK, app boots with all 10 routes.
 
-**cryptography — still DEFERRED.** `pip-audit --vulnerability-service osv` reports 6 CVEs in cryptography 41.0.7 (PYSEC-2024-225, CVE-2023-50782, CVE-2024-0727, GHSA-h4gh-qq45-vh27, CVE-2026-26007, CVE-2026-34073). Pulled transitively by `openai`. Soft-gated in CI (`pip-audit … || true`). No immediate exploit path — cryptography is used by openai for TLS/JWT, all interactions with api.openai.com (trusted). Bumping it requires re-resolution of openai's transitive tree (likely pulls a newer openai SDK), so a dedicated bump-PR with full CI re-run is the safer path.
-
-**Recommended follow-up:** `uv lock --upgrade-package cryptography` + re-export, in its own PR.
+**cryptography — RESOLVED transitively, no action needed.** The PR #38 dependency-group bump (`openai 2.32 → 2.38`) dropped `cryptography` + `pyjwt` from the transitive closure entirely — neither package appears in current `requirements.txt` or `uv.lock`. `pip-audit -r requirements.txt --vulnerability-service pypi` reports **0 known vulnerabilities** against main as of 2026-05-25. The 6 CVEs previously deferred (PYSEC-2024-225, CVE-2023-50782, CVE-2024-0727, GHSA-h4gh-qq45-vh27, CVE-2026-26007, CVE-2026-34073) are no longer exploitable because the vulnerable package is no longer present.
 
 ### M-4 — In-memory rate-limit storage (DEFERRED)
 
@@ -234,7 +232,7 @@ All gates run on `chore/pre-deploy-audit-2026-05-10` after the fix:
 | pytest | `uv run pytest -q` | ✅ 210 passed, 2 skipped | Live OpenAI tests gated; verified post-urllib3-bump |
 | bandit (CI scope) | `uv run bandit -r personalize/ kratos_clone/ scripts/ app.py --severity-level medium` | ✅ Medium: 0, High: 0 | CI gate scope per `ci.yml` |
 | bandit (incl. downloader.py) | `uv run bandit -r personalize/ kratos_clone/ scripts/ app.py downloader.py --severity-level medium` | ⚠️ Medium: 0, High: 1 | N-9 — md5 filename hashing in `downloader.py:87`; non-security |
-| pip-audit | `uv run pip-audit --vulnerability-service osv --desc on` | ⚠️ Soft — cryptography 41.0.7 transitives remain | M-3 cryptography portion deferred |
+| pip-audit | `uv run pip-audit -r requirements.txt --vulnerability-service pypi` | ✅ 0 known vulnerabilities (re-verified 2026-05-25 post-PR-#38) | M-3 fully closed |
 
 ---
 
@@ -259,7 +257,7 @@ If `/api/personalize/structure` returns 5xx → check `OPENAI_API_KEY` in Render
 
 1. **Doc refresh PR** — M-1 + M-2 + N-1 + N-2. ~30 min. Single-author doc edits.
 2. **Dockerfile hardening PR** — N-6 + N-7 (+ optionally N-8). ~30 min. Add HEALTHCHECK + USER.
-3. **Cryptography bump PR** — M-3 (urllib3 already done in this PR). `uv lock --upgrade-package cryptography` + regen requirements.txt. Verify CI green.
+3. ~~Cryptography bump PR — M-3.~~ Closed transitively by PR #38 (`openai 2.32 → 2.38` dropped both `cryptography` and `pyjwt` from the closure). No action required.
 4. **Memory investigation issue** — M-5. Profile a heavy-SPA capture under 512 MB constraint. Outcomes: keep current setup, set `--ipc=host`, or upgrade tier.
 5. **Rate-limit guard** — M-4. Add boot-time warning if `--workers >1` and storage is `memory://`.
 
