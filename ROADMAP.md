@@ -13,7 +13,7 @@ the proposed architecture in `docs/WORKFLOW.md` + `docs/PERSONALIZATION.md`.
 > both BLOCKERs fixed, urllib3 CVE bumped. See `TODO.md` for opportunistic
 > follow-ups, `CHANGELOG.md` for the per-release log, and
 > `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` for the remaining MAJOR/MINOR backlog.
-> Test count: 279 passing + 2 skipped.
+> Test count: 283 passing + 2 skipped.
 
 ---
 

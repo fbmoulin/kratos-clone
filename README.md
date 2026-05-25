@@ -4,7 +4,7 @@ Hardened SPA site cloner + DTCG design system extractor + OpenAI personalization
 Fork of [`asimov-academy/Website-Downloader`](https://github.com/asimov-academy/Website-Downloader)
 with substantial additions on top of the original Flask UI.
 
-> **Status (2026-05-25):** All 8 phases shipped. **279 tests passing**, 2 skipped
+> **Status (2026-05-25):** All 8 phases shipped. **283 tests passing**, 2 skipped
 > (live OpenAI gated by `RUN_OPENAI_LIVE=1`). mypy strict on every source file
 > (Stage A–D); bandit MEDIUM gate, 0 findings. All 9 P1 + all 12 P2 audit items
 > closed. UX audit U1–U9 + A11y P0 shipped (PRs #23, #24, #29, #30, #31).
