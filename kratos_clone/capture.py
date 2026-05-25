@@ -42,8 +42,8 @@ DEFAULT_USER_AGENT = (
 
 # Chromium launch args — memory + Docker-shm safety. Keep the chromium sandbox
 # on by default (we visit user-supplied URLs; --no-sandbox is intentionally
-# excluded). Operators on hardened containers without seccomp can append
-# additional flags via the KCD_LAUNCH_ARGS env var (comma-separated).
+# excluded). Operators on hardened containers without seccomp can override
+# the default flags via the KCD_LAUNCH_ARGS env var (comma-separated).
 #
 # Mitigates M-5 (Playwright 1.57+ Chrome-for-Testing memory regression) by
 # disabling background networking, sync, translate, extensions, and GPU which
