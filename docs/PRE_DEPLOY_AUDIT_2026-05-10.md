@@ -14,7 +14,7 @@
 | Severity | Count | Status |
 |---|---|---|
 | 🔴 BLOCKER | 2 | **Both fixed** in PR #21. |
-| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 fully closed (urllib3 fixed in PR #21; cryptography dropped from transitive closure by PR #38 openai bump). M-4, M-5 deferred. |
+| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 fully closed (urllib3 fixed in PR #21; cryptography dropped by PR #38 openai bump). M-5 partially mitigated (launch-args). M-4 deferred. |
 | 🟢 MINOR  | 9 | N-1, N-2 closed in follow-up docs PR. N-3 resolved via B-2 fix. N-4..N-9 deferred. |
 
 The container deploy via Render → Docker → `requirements.txt` was broken today: `requirements.txt` was missing 4 of the 11 declared runtime dependencies, including two (`structlog`, `flask-limiter`) imported at module level in `app.py`. `import app` raised `ModuleNotFoundError` before gunicorn could bind, so the service would fail health-check before serving a single request. The second BLOCKER (no `.env.example`) meant operators had no reference for the 24 env vars the app reads, including `OPENAI_API_KEY` — which fails silently per-request, not at boot.
@@ -76,7 +76,7 @@ BOOT OK — 10 routes
 | ~~M-2~~ | 🟡 MAJOR  | `WORKFLOW.md` claims Stages 1, 3, 6 aspirational — all shipped | `docs/WORKFLOW.md:6-9` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — status banner updated to "all 6 stages shipped 2026-04-27" |
 | M-3 | 🟡 MAJOR  | Transitive CVEs: `urllib3 2.6.2` (CVE-2026-21441); `cryptography v41.0.7` (6 CVEs) | OSV scanner (CodeRabbit), `pip-audit` output | **CLOSED**: urllib3 fixed in PR #21; cryptography dropped from deps by PR #38 openai bump. `pip-audit -r requirements.txt` reports 0 vulns as of 2026-05-25 |
 | M-4 | 🟡 MAJOR  | `RATE_LIMIT_STORAGE_URI=memory://` default; per-worker buckets if `--workers >1` | `app.py:237`, `entrypoint.sh:15` | DEFERRED |
-| M-5 | 🟡 MAJOR  | Playwright 1.57 launches Chrome for Testing instead of Chromium — memory regression on 512 MB tier | [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489), `pyproject.toml:14`, `entrypoint.sh:9-12` | DEFERRED |
+| M-5 | 🟡 MAJOR  | Playwright 1.57 launches Chrome for Testing instead of Chromium — memory regression on 512 MB tier | [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489), `pyproject.toml:14`, `entrypoint.sh:9-12` | **PARTIAL** — launch-args mitigation landed; final memory-tier decision still deferred until first prod-OOM signal |
 | ~~N-1~~ | 🟢 MINOR  | `CLAUDE.md` claims "52 tests" — actual 210 | `CLAUDE.md:70`, `pytest -q` output | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — line updated to "210 passed + 2 skipped, ~3s" |
 | ~~N-2~~ | 🟢 MINOR  | "$0.32 per run" cost claim unverified | `docs/PERSONALIZATION.md`, `docs/HANDOFF.md`, `CLAUDE.md:167` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — annotated with 2026-04-27 live measurement (~$0.05/run text-only; $0.32 forecast assumes 3 images) |
 | N-3 | 🟢 MINOR  | 20+ `KCD_*` env vars undocumented for operators | `kratos_clone/capture.py:185-228` | **RESOLVED via B-2 fix** |
@@ -157,19 +157,25 @@ This file is now a build artifact — regenerable from `uv.lock` whenever deps c
 
 **Recommended follow-up:** add an assertion in `app.py` boot path that if `--workers` env var (`GUNICORN_WORKERS` or detected from `psutil`) is >1 and `RATE_LIMIT_STORAGE_URI` is `memory://`, log a warning. Or document the constraint in `entrypoint.sh` as a comment block. Lower priority: depends on whether multi-worker is a near-term goal.
 
-### M-5 — Playwright 1.57 Chrome-for-Testing memory regression (DEFERRED)
+### M-5 — Playwright 1.57 Chrome-for-Testing memory regression (PARTIAL)
 
 [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489): v1.57+ launches Chrome for Testing instead of lightweight open-source Chromium. Reported memory under load up to 20 GB per instance. Render free tier is 512 MB.
 
-**Mitigation today:** `--workers 1` (already in `entrypoint.sh`). Each download spawns Chromium synchronously, holds it in RAM during scroll, releases on context.close(). Single-worker means at most one Chromium at a time.
+**Investigation (2026-05-25):** Confirmed on this branch: `playwright==1.60.0` and `pw.chromium.executable_path` resolves to `chromium-1223/chrome-linux64/chrome` — the post-1.57 Chrome-for-Testing build (legacy chromium had build IDs below ~1130). The Python `launch()` API does **not** accept `headless='shell'` (only `bool`), so the JS-only "headless shell" trick isn't a direct switch from Python — pointing at the lightweight `chromium_headless_shell` binary requires explicit `executable_path=`.
 
-**Risk:** even single-instance Chrome for Testing may exceed 512 MB on heavy SPAs (Lenis + WebGL + Spline). First OOM observed in prod log = trigger for action.
+**Mitigation now (landed):**
+1. `--workers 1` in `entrypoint.sh` — at most one Chromium at a time
+2. `DEFAULT_CHROMIUM_LAUNCH_ARGS` constant in `kratos_clone/capture.py` (passed to every `pw.chromium.launch()`): disables dev-shm, GPU, extensions, background networking, sync, translate, default apps, and various auto-update probes. These flags shrink CfT's working set vs. the all-default launch the module used pre-#39-follow-up. **Sandbox stays ON** — the module visits user-supplied URLs and `--no-sandbox` would be a security regression. Operators on hardened containers (no seccomp, sandbox launch fails) can opt-in via `KCD_LAUNCH_ARGS` env var (replaces defaults; comma-separated). See `tests/test_capture_helpers.py::test_launch_args_*`.
 
-**Recommended follow-up:** investigation issue. Memory-profile a representative capture inside a 512 MB-constrained container. Options if it's tight:
-- Set `--ipc=host` in entrypoint.sh (Playwright Docker recommendation)
-- Pin to playwright<1.57 (downgrade — opens compat questions)
-- Migrate to ARM64 (Render premium tiers; ARM still uses Chromium per upstream)
+**Risk remaining:** even with reduced flags, CfT is heavier than legacy chromium. First OOM observed in prod log = trigger for one of the harder options below.
+
+**Recommended follow-up (deferred until first OOM signal):**
+- Set `--ipc=host` in `entrypoint.sh` (Playwright Docker recommendation)
+- Repoint `executable_path` to `chromium_headless_shell-NNNN/...` via a `KCD_USE_HEADLESS_SHELL=1` knob (smaller binary; requires `playwright install chromium-headless-shell`)
+- Pin to playwright<1.57 (downgrade — opens compat questions; Patches A–E were validated against 1.57+ async API)
 - Upgrade Render tier above 512 MB
+
+**Why this stopped at "partial" rather than full closure:** the local sandbox here can't run a representative capture inside a 512 MB cgroup, so the actual peak-RSS measurement that would justify a deeper mitigation (ipc=host vs. tier upgrade vs. headless-shell switch) can't be produced without docker-in-docker + a heavy-SPA target page. Re-open when prod telemetry surfaces an OOM.
 
 ### N-2 — "$0.32 per run" cost claim (DEFERRED)
 
