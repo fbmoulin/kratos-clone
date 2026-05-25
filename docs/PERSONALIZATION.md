@@ -5,8 +5,9 @@
 > **✅ STATUS: SHIPPED 2026-04-27** (Phase 4 in `ROADMAP.md`).
 >
 > Implementation lives in `personalize/` (slots, sanitize, openai_client,
-> patcher, pipeline, cli) with 89 dedicated tests + 2 gated live integration
-> tests. Audit P2-11 (prompt-injection / image-XSS hardening) closed by
+> patcher, pipeline, cli) with 63 dedicated unit tests across 7 files +
+> 2 gated live integration tests (`RUN_OPENAI_LIVE=1`). Audit P2-11
+> (prompt-injection / image-XSS hardening) closed by
 > `personalize/sanitize.py`.
 >
 > **Cost reconciliation (2026-04-27 live test):** text-only path
