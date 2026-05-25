@@ -3,7 +3,7 @@
 Phased plan derived from `docs/AUDIT.md` (multi-agent audit, 2026-04-27) and
 the proposed architecture in `docs/WORKFLOW.md` + `docs/PERSONALIZATION.md`.
 
-> **Current state (2026-05-16):** All 6 original phases shipped. Personalization
+> **Current state (2026-05-25):** All 6 original phases shipped. Personalization
 > MVP live (gpt-5-mini Responses + gpt-image-1, hard budget cap, sanitize
 > hardened). All 9 P1 + all 12 P2 audit items closed. mypy strict on every
 > source file. **Phase 7 (UX audit U1–U9 + A11y P0) shipped 2026-05-11/15
