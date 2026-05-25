@@ -40,6 +40,28 @@ DEFAULT_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
+# Chromium launch args — memory + Docker-shm safety. Keep the chromium sandbox
+# on by default (we visit user-supplied URLs; --no-sandbox is intentionally
+# excluded). Operators on hardened containers without seccomp can append
+# additional flags via the KCD_LAUNCH_ARGS env var (comma-separated).
+#
+# Mitigates M-5 (Playwright 1.57+ Chrome-for-Testing memory regression) by
+# disabling background networking, sync, translate, extensions, and GPU which
+# CfT ships enabled by default. See docs/PRE_DEPLOY_AUDIT_2026-05-10.md §M-5.
+DEFAULT_CHROMIUM_LAUNCH_ARGS = (
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-extensions",
+    "--disable-default-apps",
+    "--disable-background-networking",
+    "--disable-sync",
+    "--disable-translate",
+    "--metrics-recording-only",
+    "--mute-audio",
+    "--no-first-run",
+    "--safebrowsing-disable-auto-update",
+)
+
 
 # ── Init scripts (injected BEFORE goto via add_init_script) ──────────────────
 PATCH_A_IO_PREFIRE = r"""
@@ -226,6 +248,18 @@ class CaptureConfig:
         default_factory=lambda: int(os.getenv("KCD_MAX_TOTAL_MB", "200"))
     )
     max_assets: int = field(default_factory=lambda: int(os.getenv("KCD_MAX_ASSETS", "500")))
+    # M-5 mitigation: Chromium launch args. Defaults to memory-safe flags
+    # (DEFAULT_CHROMIUM_LAUNCH_ARGS). Override via KCD_LAUNCH_ARGS
+    # (comma-separated, replaces default — does NOT append).
+    launch_args: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            arg.strip()
+            for arg in os.getenv("KCD_LAUNCH_ARGS", ",".join(DEFAULT_CHROMIUM_LAUNCH_ARGS)).split(
+                ","
+            )
+            if arg.strip()
+        )
+    )
 
 
 # ── Asset hashing & filename helpers ─────────────────────────────────────────
@@ -359,7 +393,10 @@ class HardenedCapture:
         self.assets_dir.mkdir(exist_ok=True)
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=not self.cfg.headed)
+            browser = await pw.chromium.launch(
+                headless=not self.cfg.headed,
+                args=list(self.cfg.launch_args),
+            )
             context = await browser.new_context(
                 viewport={
                     "width": self.cfg.viewport_width,
