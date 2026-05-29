@@ -16,7 +16,7 @@ def test_no_warning_for_single_worker_with_memory_storage():
     """Default deploy (workers=1, memory://) → silent, no warning."""
     with capture_logs() as logs:
         _warn_if_rate_limit_misconfigured(storage_uri="memory://", workers=1)
-    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfig"]
+    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfigured"]
     assert misconfig == []
 
 
@@ -24,7 +24,7 @@ def test_no_warning_for_multiworker_with_shared_backend():
     """Multi-worker is fine when storage is a shared backend (Redis)."""
     with capture_logs() as logs:
         _warn_if_rate_limit_misconfigured(storage_uri="redis://cache.internal:6379/0", workers=4)
-    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfig"]
+    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfigured"]
     assert misconfig == []
 
 
@@ -32,7 +32,7 @@ def test_warning_emitted_for_multiworker_with_memory_storage():
     """The whole point of M-4: warn on the silent footgun."""
     with capture_logs() as logs:
         _warn_if_rate_limit_misconfigured(storage_uri="memory://", workers=4)
-    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfig"]
+    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfigured"]
     assert len(misconfig) == 1
     entry = misconfig[0]
     assert entry["workers"] == 4
@@ -47,5 +47,23 @@ def test_warning_treats_memory_storage_options_as_in_memory():
     """`memory://` URIs may carry options (e.g. `memory://?expiration=60`)."""
     with capture_logs() as logs:
         _warn_if_rate_limit_misconfigured(storage_uri="memory://?option=x", workers=2)
-    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfig"]
+    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfigured"]
     assert len(misconfig) == 1
+
+
+def test_create_app_survives_nonnumeric_web_concurrency(monkeypatch):
+    """A non-numeric WEB_CONCURRENCY (e.g. 'auto', '') must not abort boot.
+
+    Regression guard: the M-4 check parses WEB_CONCURRENCY with int(); a raw
+    parse would raise ValueError and take down startup on platforms that set
+    it to a non-integer. Boot must survive and fall back to 1 worker.
+    """
+    import app as app_module
+
+    monkeypatch.setenv("WEB_CONCURRENCY", "auto")
+    with capture_logs() as logs:
+        app_module.create_app(start_janitor=False, run_boot_cleanup=False)
+    parse_fail = [e for e in logs if e.get("event") == "web_concurrency_parse_failed"]
+    assert len(parse_fail) == 1
+    assert parse_fail[0]["provided"] == "auto"
+    assert parse_fail[0]["fallback"] == 1

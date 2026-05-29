@@ -153,7 +153,7 @@ This file is now a build artifact — regenerable from `uv.lock` whenever deps c
 
 `RATE_LIMIT_STORAGE_URI` defaults to `memory://` (`app.py`). With Flask-Limiter's in-memory backend, each gunicorn worker has its own bucket — N workers means rate limits are silently multiplied by N.
 
-**Resolution (2026-05-25):** `app.py::_warn_if_rate_limit_misconfigured` logs a structured `rate_limit_storage_misconfig` warning at boot when `WEB_CONCURRENCY > 1` and the storage URI starts with `memory://`. The warning includes `workers`, `storage_uri`, a one-line `reason`, and an actionable `fix` (set Redis URI or keep WEB_CONCURRENCY=1). `entrypoint.sh` now propagates `WEB_CONCURRENCY` (gunicorn-standard env var) so Render/Railway operators that scale workers via the standard env automatically trigger the boot check. Tests: `tests/test_app_boot.py` (4 cases: single-worker silent, multi-worker with Redis silent, multi-worker with memory:// warns, memory://?options handled).
+**Resolution (2026-05-25):** `app.py::_warn_if_rate_limit_misconfigured` logs a structured `rate_limit_storage_misconfigured` warning at boot when `WEB_CONCURRENCY > 1` and the storage URI starts with `memory://`. The warning includes `workers`, `storage_uri`, a one-line `reason`, and an actionable `fix` (set Redis URI or keep WEB_CONCURRENCY=1). `WEB_CONCURRENCY` is parsed defensively — a non-numeric value (e.g. `auto`) logs `web_concurrency_parse_failed` and falls back to 1 worker rather than aborting boot. `entrypoint.sh` now propagates `WEB_CONCURRENCY` (gunicorn-standard env var) so Render/Railway operators that scale workers via the standard env automatically trigger the boot check. Tests: `tests/test_app_boot.py` (5 cases: single-worker silent, multi-worker with Redis silent, multi-worker with memory:// warns, memory://?options handled, non-numeric WEB_CONCURRENCY survives boot).
 
 **Recommended follow-up:** add an assertion in `app.py` boot path that if `--workers` env var (`GUNICORN_WORKERS` or detected from `psutil`) is >1 and `RATE_LIMIT_STORAGE_URI` is `memory://`, log a warning. Or document the constraint in `entrypoint.sh` as a comment block. Lower priority: depends on whether multi-worker is a near-term goal.
 
@@ -265,6 +265,6 @@ If `/api/personalize/structure` returns 5xx → check `OPENAI_API_KEY` in Render
 2. **Dockerfile hardening PR** — N-6 + N-7 (+ optionally N-8). ~30 min. Add HEALTHCHECK + USER.
 3. ~~Cryptography bump PR — M-3.~~ Closed transitively by PR #38 (`openai 2.32 → 2.38` dropped both `cryptography` and `pyjwt` from the closure). No action required.
 4. **Memory investigation issue** — M-5. Profile a heavy-SPA capture under 512 MB constraint. Outcomes: keep current setup, set `--ipc=host`, or upgrade tier.
-5. ~~Rate-limit guard — M-4.~~ Landed: `app.py::_warn_if_rate_limit_misconfigured` logs `rate_limit_storage_misconfig` at boot when `WEB_CONCURRENCY > 1` and storage is `memory://`.
+5. ~~Rate-limit guard — M-4.~~ Landed: `app.py::_warn_if_rate_limit_misconfigured` logs `rate_limit_storage_misconfigured` at boot when `WEB_CONCURRENCY > 1` and storage is `memory://`.
 
 Each is independent and small. None blocks deploy.

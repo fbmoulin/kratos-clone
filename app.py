@@ -228,7 +228,7 @@ def _warn_if_rate_limit_misconfigured(storage_uri: str, workers: int) -> None:
     """
     if workers > 1 and storage_uri.startswith("memory://"):
         logger.warning(
-            "rate_limit_storage_misconfig",
+            "rate_limit_storage_misconfigured",
             workers=workers,
             storage_uri=storage_uri,
             reason="in-memory rate-limit storage with multiple gunicorn workers — limits silently multiplied by worker count",
@@ -256,10 +256,15 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
     storage_uri = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
     app.config.setdefault("RATELIMIT_STORAGE_URI", storage_uri)
     limiter.init_app(app)
-    _warn_if_rate_limit_misconfigured(
-        storage_uri=storage_uri,
-        workers=int(os.getenv("WEB_CONCURRENCY", "1")),
-    )
+    workers_raw = os.getenv("WEB_CONCURRENCY", "1")
+    try:
+        workers = int(workers_raw)
+    except ValueError:
+        # Some platforms set WEB_CONCURRENCY to non-numeric values (e.g. "auto")
+        # or leave it empty. Don't let an observability check abort startup.
+        logger.warning("web_concurrency_parse_failed", provided=workers_raw, fallback=1)
+        workers = 1
+    _warn_if_rate_limit_misconfigured(storage_uri=storage_uri, workers=workers)
     if run_boot_cleanup:
         cleanup_downloads_folder()
     if start_janitor:

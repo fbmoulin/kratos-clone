@@ -68,7 +68,7 @@ uv run ruff format --check kratos_clone/ scripts/ app.py
 
 ### Tests
 ```bash
-uv run pytest -q                    # 283 passed + 2 skipped, ~2s (live OpenAI gated)
+uv run pytest -q                    # 284 passed + 2 skipped, ~2s (live OpenAI gated)
 uv run pytest tests/test_post.py -v # specific file
 ```
 
@@ -130,7 +130,7 @@ gh run list --limit 5
 > CVE within M-3 also bumped there. M-3 cryptography portion closed
 > transitively by PR #38 (openai 2.32 → 2.38 dropped cryptography from the
 > dep closure; `pip-audit -r requirements.txt` reports 0 vulns). M-4
-> closed by boot-time `rate_limit_storage_misconfig` warning + WEB_CONCURRENCY
+> closed by boot-time `rate_limit_storage_misconfigured` warning + WEB_CONCURRENCY
 > propagation in entrypoint.sh. M-5 Playwright Chrome-for-Testing partially
 > mitigated by launch-arg constant in `kratos_clone/capture.py` (CfT
 > memory-reduction flags; sandbox stays on). Remaining: 6 MINOR deferred
