@@ -51,6 +51,15 @@ def test_warning_treats_memory_storage_options_as_in_memory():
     assert len(misconfig) == 1
 
 
+def test_warning_emitted_for_async_memory_backend():
+    """Flask-Limiter's `async+memory://` has the same per-process bucket problem."""
+    with capture_logs() as logs:
+        _warn_if_rate_limit_misconfigured(storage_uri="async+memory://", workers=4)
+    misconfig = [e for e in logs if e.get("event") == "rate_limit_storage_misconfigured"]
+    assert len(misconfig) == 1
+    assert misconfig[0]["storage_uri"] == "async+memory://"
+
+
 def test_create_app_survives_nonnumeric_web_concurrency(monkeypatch):
     """A non-numeric WEB_CONCURRENCY (e.g. 'auto', '') must not abort boot.
 
@@ -67,3 +76,38 @@ def test_create_app_survives_nonnumeric_web_concurrency(monkeypatch):
     assert len(parse_fail) == 1
     assert parse_fail[0]["provided"] == "auto"
     assert parse_fail[0]["fallback"] == 1
+
+
+def test_create_app_rejects_zero_workers(monkeypatch):
+    """WEB_CONCURRENCY=0 parses cleanly as int but is invalid — fall back."""
+    import app as app_module
+
+    monkeypatch.setenv("WEB_CONCURRENCY", "0")
+    with capture_logs() as logs:
+        app_module.create_app(start_janitor=False, run_boot_cleanup=False)
+    parse_fail = [e for e in logs if e.get("event") == "web_concurrency_parse_failed"]
+    assert len(parse_fail) == 1
+    assert parse_fail[0]["provided"] == "0"
+
+
+def test_create_app_rejects_negative_workers(monkeypatch):
+    """WEB_CONCURRENCY=-1 parses cleanly as int but is invalid — fall back."""
+    import app as app_module
+
+    monkeypatch.setenv("WEB_CONCURRENCY", "-1")
+    with capture_logs() as logs:
+        app_module.create_app(start_janitor=False, run_boot_cleanup=False)
+    parse_fail = [e for e in logs if e.get("event") == "web_concurrency_parse_failed"]
+    assert len(parse_fail) == 1
+    assert parse_fail[0]["provided"] == "-1"
+
+
+def test_create_app_treats_empty_web_concurrency_as_default(monkeypatch):
+    """WEB_CONCURRENCY='' (set-but-empty) should be silent like unset, not 'parse failed'."""
+    import app as app_module
+
+    monkeypatch.setenv("WEB_CONCURRENCY", "")
+    with capture_logs() as logs:
+        app_module.create_app(start_janitor=False, run_boot_cleanup=False)
+    parse_fail = [e for e in logs if e.get("event") == "web_concurrency_parse_failed"]
+    assert parse_fail == []

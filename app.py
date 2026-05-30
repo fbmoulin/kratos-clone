@@ -226,7 +226,7 @@ def _warn_if_rate_limit_misconfigured(storage_uri: str, workers: int) -> None:
     we surface the mismatch here at boot rather than discovering it from a
     rate-limit miss in prod.
     """
-    if workers > 1 and storage_uri.startswith("memory://"):
+    if workers > 1 and storage_uri.startswith(("memory://", "async+memory://")):
         logger.warning(
             "rate_limit_storage_misconfigured",
             workers=workers,
@@ -256,12 +256,17 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
     storage_uri = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
     app.config.setdefault("RATELIMIT_STORAGE_URI", storage_uri)
     limiter.init_app(app)
-    workers_raw = os.getenv("WEB_CONCURRENCY", "1")
+    # `os.getenv` returns "" for set-but-empty; `or "1"` collapses that AND
+    # None (unset) to the same default. int() on a positive-string-stripped
+    # value succeeds; non-positive (0, -1) or non-numeric goes to ValueError.
+    workers_raw = os.getenv("WEB_CONCURRENCY") or "1"
     try:
         workers = int(workers_raw)
+        if workers < 1:
+            raise ValueError(f"non-positive worker count: {workers}")
     except ValueError:
         # Some platforms set WEB_CONCURRENCY to non-numeric values (e.g. "auto")
-        # or leave it empty. Don't let an observability check abort startup.
+        # or to 0/negative. Don't let an observability check abort startup.
         logger.warning("web_concurrency_parse_failed", provided=workers_raw, fallback=1)
         workers = 1
     _warn_if_rate_limit_misconfigured(storage_uri=storage_uri, workers=workers)

@@ -68,7 +68,7 @@ uv run ruff format --check kratos_clone/ scripts/ app.py
 
 ### Tests
 ```bash
-uv run pytest -q                    # 284 passed + 2 skipped, ~2s (live OpenAI gated)
+uv run pytest -q                    # 288 passed + 2 skipped, ~2s (live OpenAI gated)
 uv run pytest tests/test_post.py -v # specific file
 ```
 
