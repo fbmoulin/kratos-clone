@@ -14,7 +14,7 @@
 | Severity | Count | Status |
 |---|---|---|
 | 🔴 BLOCKER | 2 | **Both fixed** in PR #21. |
-| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 fully closed (urllib3 fixed in PR #21; cryptography dropped by PR #38 openai bump). M-5 partially mitigated (launch-args). M-4 deferred. |
+| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 fully closed (urllib3 fixed in PR #21; cryptography dropped by PR #38 openai bump). M-4 closed (boot-time warning). M-5 partially mitigated (launch-args). |
 | 🟢 MINOR  | 9 | N-1, N-2 closed in follow-up docs PR. N-3 resolved via B-2 fix. N-4..N-9 deferred. |
 
 The container deploy via Render → Docker → `requirements.txt` was broken today: `requirements.txt` was missing 4 of the 11 declared runtime dependencies, including two (`structlog`, `flask-limiter`) imported at module level in `app.py`. `import app` raised `ModuleNotFoundError` before gunicorn could bind, so the service would fail health-check before serving a single request. The second BLOCKER (no `.env.example`) meant operators had no reference for the 24 env vars the app reads, including `OPENAI_API_KEY` — which fails silently per-request, not at boot.
@@ -75,7 +75,7 @@ BOOT OK — 10 routes
 | ~~M-1~~ | 🟡 MAJOR  | `CLAUDE.md` "Known issues" stale (claims 7 P2 items remain, actually 0) | `CLAUDE.md:109-117`, `docs/AUDIT.md` (all P2-1..P2-12 struck-through) | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — CLAUDE.md "Known issues" rewritten to reflect all P2 closed + pre-deploy-audit summary |
 | ~~M-2~~ | 🟡 MAJOR  | `WORKFLOW.md` claims Stages 1, 3, 6 aspirational — all shipped | `docs/WORKFLOW.md:6-9` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — status banner updated to "all 6 stages shipped 2026-04-27" |
 | M-3 | 🟡 MAJOR  | Transitive CVEs: `urllib3 2.6.2` (CVE-2026-21441); `cryptography v41.0.7` (6 CVEs) | OSV scanner (CodeRabbit), `pip-audit` output | **CLOSED**: urllib3 fixed in PR #21; cryptography dropped from deps by PR #38 openai bump. `pip-audit -r requirements.txt` reports 0 vulns as of 2026-05-25 |
-| M-4 | 🟡 MAJOR  | `RATE_LIMIT_STORAGE_URI=memory://` default; per-worker buckets if `--workers >1` | `app.py:237`, `entrypoint.sh:15` | DEFERRED |
+| M-4 | 🟡 MAJOR  | `RATE_LIMIT_STORAGE_URI=memory://` default; per-worker buckets if `--workers >1` | `app.py:237`, `entrypoint.sh:15` | **CLOSED** — boot-time warning + WEB_CONCURRENCY env propagation |
 | M-5 | 🟡 MAJOR  | Playwright 1.57 launches Chrome for Testing instead of Chromium — memory regression on 512 MB tier | [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489), `pyproject.toml:14`, `entrypoint.sh:9-12` | **PARTIAL** — launch-args mitigation landed; final memory-tier decision still deferred until first prod-OOM signal |
 | ~~N-1~~ | 🟢 MINOR  | `CLAUDE.md` claims "52 tests" — actual 210 | `CLAUDE.md:70`, `pytest -q` output | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — line updated to "210 passed + 2 skipped, ~3s" |
 | ~~N-2~~ | 🟢 MINOR  | "$0.32 per run" cost claim unverified | `docs/PERSONALIZATION.md`, `docs/HANDOFF.md`, `CLAUDE.md:167` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — annotated with 2026-04-27 live measurement (~$0.05/run text-only; $0.32 forecast assumes 3 images) |
@@ -149,11 +149,11 @@ This file is now a build artifact — regenerable from `uv.lock` whenever deps c
 
 **cryptography — RESOLVED transitively, no action needed.** The PR #38 dependency-group bump (`openai 2.32 → 2.38`) dropped `cryptography` + `pyjwt` from the transitive closure entirely — neither package appears in current `requirements.txt` or `uv.lock`. `pip-audit -r requirements.txt --vulnerability-service pypi` reports **0 known vulnerabilities** against main as of 2026-05-25. The 6 CVEs previously deferred (PYSEC-2024-225, CVE-2023-50782, CVE-2024-0727, GHSA-h4gh-qq45-vh27, CVE-2026-26007, CVE-2026-34073) are no longer exploitable because the vulnerable package is no longer present.
 
-### M-4 — In-memory rate-limit storage (DEFERRED)
+### M-4 — In-memory rate-limit storage (CLOSED)
 
-`RATE_LIMIT_STORAGE_URI` defaults to `memory://` (`app.py:237`). With Flask-Limiter's in-memory backend, each gunicorn worker has its own bucket — N workers means rate limits are silently multiplied by N.
+`RATE_LIMIT_STORAGE_URI` defaults to `memory://` (`app.py`). With Flask-Limiter's in-memory backend, each gunicorn worker has its own bucket — N workers means rate limits are silently multiplied by N.
 
-**Mitigation today:** `entrypoint.sh:15` hardcodes `--workers 1`. The mismatch is invisible; if a future ops change scales workers without setting a Redis URI, rate limits degrade silently.
+**Resolution (2026-05-25):** `app.py::_warn_if_rate_limit_misconfigured` logs a structured `rate_limit_storage_misconfigured` warning at boot when `WEB_CONCURRENCY > 1` and the storage URI starts with `memory://`. The warning includes `workers`, `storage_uri`, a one-line `reason`, and an actionable `fix` (set Redis URI or keep WEB_CONCURRENCY=1). `WEB_CONCURRENCY` is parsed defensively — a non-numeric value (e.g. `auto`) logs `web_concurrency_parse_failed` and falls back to 1 worker rather than aborting boot. `entrypoint.sh` now propagates `WEB_CONCURRENCY` (gunicorn-standard env var) so Render/Railway operators that scale workers via the standard env automatically trigger the boot check. Tests: `tests/test_app_boot.py` (5 cases: single-worker silent, multi-worker with Redis silent, multi-worker with memory:// warns, memory://?options handled, non-numeric WEB_CONCURRENCY survives boot).
 
 **Recommended follow-up:** add an assertion in `app.py` boot path that if `--workers` env var (`GUNICORN_WORKERS` or detected from `psutil`) is >1 and `RATE_LIMIT_STORAGE_URI` is `memory://`, log a warning. Or document the constraint in `entrypoint.sh` as a comment block. Lower priority: depends on whether multi-worker is a near-term goal.
 
@@ -265,6 +265,6 @@ If `/api/personalize/structure` returns 5xx → check `OPENAI_API_KEY` in Render
 2. **Dockerfile hardening PR** — N-6 + N-7 (+ optionally N-8). ~30 min. Add HEALTHCHECK + USER.
 3. ~~Cryptography bump PR — M-3.~~ Closed transitively by PR #38 (`openai 2.32 → 2.38` dropped both `cryptography` and `pyjwt` from the closure). No action required.
 4. **Memory investigation issue** — M-5. Profile a heavy-SPA capture under 512 MB constraint. Outcomes: keep current setup, set `--ipc=host`, or upgrade tier.
-5. **Rate-limit guard** — M-4. Add boot-time warning if `--workers >1` and storage is `memory://`.
+5. ~~Rate-limit guard — M-4.~~ Landed: `app.py::_warn_if_rate_limit_misconfigured` logs `rate_limit_storage_misconfigured` at boot when `WEB_CONCURRENCY > 1` and storage is `memory://`.
 
 Each is independent and small. None blocks deploy.

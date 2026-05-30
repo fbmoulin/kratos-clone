@@ -215,6 +215,27 @@ def cleanup_abandoned_sessions() -> None:
             logger.error("janitor_cycle_failed", error=str(e))
 
 
+def _warn_if_rate_limit_misconfigured(storage_uri: str, workers: int) -> None:
+    """M-4 boot check: in-memory rate-limit storage with >1 gunicorn worker.
+
+    Flask-Limiter's `memory://` backend keeps a per-process bucket, so each
+    worker counts requests independently. Run with N workers and the
+    effective rate limit is silently multiplied by N. `entrypoint.sh` pins
+    `--workers 1` to avoid this; if an operator scales workers without also
+    pointing `RATE_LIMIT_STORAGE_URI` at a shared backend (Redis, Memcached),
+    we surface the mismatch here at boot rather than discovering it from a
+    rate-limit miss in prod.
+    """
+    if workers > 1 and storage_uri.startswith("memory://"):
+        logger.warning(
+            "rate_limit_storage_misconfigured",
+            workers=workers,
+            storage_uri=storage_uri,
+            reason="in-memory rate-limit storage with multiple gunicorn workers — limits silently multiplied by worker count",
+            fix="set RATE_LIMIT_STORAGE_URI to a shared backend (e.g. redis://...) or keep WEB_CONCURRENCY=1",
+        )
+
+
 def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Flask:
     """Initialize side-effecting parts of the app: ensure DOWNLOAD_FOLDER exists,
     bind the rate limiter, optionally clear stale downloads on boot, and
@@ -232,11 +253,18 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
         os.makedirs(DOWNLOAD_FOLDER)
     # Bind limiter storage now (memory:// would otherwise spawn an
     # expiration thread at module-import time and trip the smoke test).
-    app.config.setdefault(
-        "RATELIMIT_STORAGE_URI",
-        os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"),
-    )
+    storage_uri = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
+    app.config.setdefault("RATELIMIT_STORAGE_URI", storage_uri)
     limiter.init_app(app)
+    workers_raw = os.getenv("WEB_CONCURRENCY", "1")
+    try:
+        workers = int(workers_raw)
+    except ValueError:
+        # Some platforms set WEB_CONCURRENCY to non-numeric values (e.g. "auto")
+        # or leave it empty. Don't let an observability check abort startup.
+        logger.warning("web_concurrency_parse_failed", provided=workers_raw, fallback=1)
+        workers = 1
+    _warn_if_rate_limit_misconfigured(storage_uri=storage_uri, workers=workers)
     if run_boot_cleanup:
         cleanup_downloads_folder()
     if start_janitor:
