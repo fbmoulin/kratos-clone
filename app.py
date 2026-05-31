@@ -237,6 +237,11 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
         os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"),
     )
     limiter.init_app(app)
+    # R2-PRC008 (approved 2026-05-30): build at app-construction time so the test
+    # factory + monkeypatch.setenv picks up overrides without importlib.reload.
+    app.config["RENDER_SEMAPHORE"] = threading.Semaphore(
+        int(os.getenv("KCD_MAX_CONCURRENT_RENDERS", "2"))
+    )
     if run_boot_cleanup:
         cleanup_downloads_folder()
     if start_janitor:
@@ -769,6 +774,96 @@ def personalize_preview(html_dir: str, asset_path: str) -> Response | tuple[str,
         return resp
     except (FileNotFoundError, NotFound):
         return ("Not found", 404)
+
+
+class RenderCapacityExhausted(Exception):
+    """Raised when the render semaphore acquire times out (R1-PRC004)."""
+
+
+async def _block_external(route: Any) -> None:
+    """Abort non-file:// requests during screenshot render (R1-PRC002).
+
+    Module-level so it is unit-testable without a live Playwright instance
+    (R2-PRC007).
+    """
+    if route.request.url.startswith("file:"):
+        await route.continue_()
+    else:
+        await route.abort()
+
+
+@app.route("/api/personalize/screenshot/<html_dir>", methods=["GET"])
+def personalize_screenshot(html_dir: str) -> Response | tuple[Response, int]:
+    """Generate (or fetch cached) PNG screenshot of before|after HTML.
+
+    Query: ?which=before|after. Cache: downloads/<html_dir>/preview-{before,after}.png.
+    <html_dir> uses default <string:> converter (single-segment capture dirs).
+    """
+    which = request.args.get("which")
+    if which not in ("before", "after"):
+        return jsonify({"error": "which must be 'before' or 'after'"}), 400
+    dir_path = _validate_html_dir(html_dir)
+    if dir_path is None:
+        return jsonify({"error": "html_dir invalid or outside downloads/"}), 400
+    if not os.path.isdir(dir_path):
+        return jsonify({"error": "Directory not found"}), 404
+    src_filename = "index.html" if which == "before" else "personalized.html"
+    src_path = os.path.join(dir_path, src_filename)
+    if not os.path.isfile(src_path):
+        return jsonify({"error": f"{src_filename} not found in {html_dir}"}), 404
+    cache_path = os.path.join(dir_path, f"preview-{which}.png")
+    if not os.path.isfile(cache_path):
+        try:
+            _render_html_to_png(src_path, cache_path)
+        except RenderCapacityExhausted:
+            resp = jsonify({"error": "render capacity exhausted, try again in a moment"})
+            resp.headers["Retry-After"] = "30"
+            return resp, 503
+    return send_file(cache_path, mimetype="image/png")
+
+
+def _render_html_to_png(src_html_path: str, out_png_path: str) -> None:
+    """Render a local HTML file to a 1280x800 PNG via Playwright headless.
+
+    Concurrency-bounded (R1-PRC004): acquires the render semaphore with 15s timeout;
+    on timeout raises RenderCapacityExhausted. Atomic write (R1-PRC003): renders to a
+    tempfile in the SAME dir then os.replace. External requests blocked (R1-PRC002).
+    """
+    import asyncio
+    import tempfile
+
+    from flask import current_app
+    from playwright.async_api import async_playwright
+
+    semaphore = current_app.config["RENDER_SEMAPHORE"]
+    if not semaphore.acquire(timeout=15):
+        raise RenderCapacityExhausted()
+    try:
+        out_dir = os.path.dirname(out_png_path)
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png.tmp", dir=out_dir)
+        os.close(tmp_fd)
+        try:
+
+            async def _render() -> None:
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(headless=True)
+                    try:
+                        ctx = await browser.new_context(viewport={"width": 1280, "height": 800})
+                        page = await ctx.new_page()
+                        await page.route("**/*", _block_external)
+                        await page.goto(f"file://{src_html_path}", wait_until="load", timeout=8000)
+                        await page.screenshot(path=tmp_path, full_page=False)
+                    finally:
+                        await browser.close()
+
+            asyncio.run(_render())
+            os.replace(tmp_path, out_png_path)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+            raise
+    finally:
+        semaphore.release()
 
 
 if __name__ == "__main__":

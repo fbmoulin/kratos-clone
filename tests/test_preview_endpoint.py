@@ -11,6 +11,13 @@ conftest.py because Task 3's tests reuse them from a different file.
 
 from __future__ import annotations
 
+# A 1x1 transparent PNG (smallest valid PNG) used by route-level happy-path
+# tests so we never launch a real browser in the unit suite.
+PNG_1x1 = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000a49444154789c6360000002000154a24f5f0000000049454e44ae426082"
+)
+
 
 class TestPersonalizePreview:
     # --- Happy paths -------------------------------------------------------
@@ -95,3 +102,137 @@ class TestPersonalizePreview:
         csp = r.headers.get("Content-Security-Policy", "")
         assert "script-src 'none'" in csp
         assert "sandbox" in csp
+
+
+class TestPersonalizeScreenshot:
+    """Route-level tests for /api/personalize/screenshot/<html_dir>.
+
+    Playwright is never launched here: the render path is exercised by
+    monkeypatching app._render_html_to_png. The render helper itself is covered
+    only at the unit level (network guard) — a live browser launch belongs in
+    a gated integration test, not this suite.
+    """
+
+    # --- Query / path validation ------------------------------------------
+
+    def test_which_missing_400(self, client, tmp_capture):
+        r = client.get(f"/api/personalize/screenshot/{tmp_capture}")
+        assert r.status_code == 400
+
+    def test_which_invalid_400(self, client, tmp_capture):
+        r = client.get(f"/api/personalize/screenshot/{tmp_capture}?which=sideways")
+        assert r.status_code == 400
+
+    def test_html_dir_invalid_400(self, client):
+        # "." is rejected by _validate_html_dir's empty/dot guard -> 400 (the
+        # invalid-html_dir branch). Real ".." segments are handled at the routing
+        # layer (308/404), exercised by the sibling preview-endpoint tests.
+        r = client.get("/api/personalize/screenshot/.?which=before")
+        assert r.status_code == 400
+
+    def test_missing_dir_404(self, client):
+        r = client.get("/api/personalize/screenshot/doesnotexist?which=before")
+        assert r.status_code == 404
+
+    def test_before_missing_index_404(self, client, capture_root):
+        # Dir exists but has no index.html -> 404 for which=before.
+        (capture_root / "empty").mkdir()
+        r = client.get("/api/personalize/screenshot/empty?which=before")
+        assert r.status_code == 404
+
+    def test_after_missing_personalized_404(self, client, capture_root):
+        # tmp_capture has index.html but a fresh dir without personalized.html.
+        (capture_root / "noperso").mkdir()
+        (capture_root / "noperso" / "index.html").write_text("<title>x</title>")
+        r = client.get("/api/personalize/screenshot/noperso?which=after")
+        assert r.status_code == 404
+
+    # --- Render happy path / cache / capacity -----------------------------
+
+    def test_happy_path_after_renders_png(self, client, tmp_capture, monkeypatch):
+        import app as app_module
+
+        def fake_render(src_html_path, out_png_path):
+            # The route hands us the cache_path; write a valid PNG there.
+            with open(out_png_path, "wb") as fh:
+                fh.write(PNG_1x1)
+
+        monkeypatch.setattr(app_module, "_render_html_to_png", fake_render)
+        r = client.get(f"/api/personalize/screenshot/{tmp_capture}?which=after")
+        assert r.status_code == 200
+        assert r.headers["Content-Type"] == "image/png"
+        assert r.data == PNG_1x1
+
+    def test_cache_hit_skips_render(self, client, tmp_capture, capture_root, monkeypatch):
+        import app as app_module
+
+        # Pre-create the cache file so the route short-circuits the render.
+        (capture_root / tmp_capture / "preview-after.png").write_bytes(PNG_1x1)
+        calls = []
+
+        def spy_render(src_html_path, out_png_path):
+            calls.append((src_html_path, out_png_path))
+
+        monkeypatch.setattr(app_module, "_render_html_to_png", spy_render)
+        r = client.get(f"/api/personalize/screenshot/{tmp_capture}?which=after")
+        assert r.status_code == 200
+        assert r.headers["Content-Type"] == "image/png"
+        assert calls == []  # cache hit -> render never invoked
+
+    def test_capacity_exhausted_503(self, client, tmp_capture, monkeypatch):
+        import app as app_module
+
+        def boom(src_html_path, out_png_path):
+            raise app_module.RenderCapacityExhausted()
+
+        monkeypatch.setattr(app_module, "_render_html_to_png", boom)
+        r = client.get(f"/api/personalize/screenshot/{tmp_capture}?which=after")
+        assert r.status_code == 503
+        assert r.headers.get("Retry-After") == "30"
+
+
+def test_screenshot_semaphore_default_value(client):
+    """create_app() (via the client fixture) wires RENDER_SEMAPHORE with the
+    default capacity of 2 when KCD_MAX_CONCURRENT_RENDERS is unset."""
+    sem = client.application.config["RENDER_SEMAPHORE"]
+    assert sem._value == 2
+
+
+def test_capacity_override_via_env(monkeypatch):
+    """R2-PRC008: monkeypatch.setenv + a fresh create_app() picks up the
+    override with no importlib.reload (semaphore built at app-construction)."""
+    monkeypatch.setenv("KCD_MAX_CONCURRENT_RENDERS", "1")
+    import app as app_module
+
+    test_app = app_module.create_app(start_janitor=False, run_boot_cleanup=False)
+    sem = test_app.config["RENDER_SEMAPHORE"]
+    assert sem._value == 1
+
+
+def test_block_external_aborts_non_file_urls():
+    """R2-PRC007: the request-blocking callback is module-level + unit-testable
+    without a live Playwright instance."""
+    import asyncio
+
+    import app as app_module
+
+    aborted, continued = [], []
+
+    class FakeRequest:
+        def __init__(self, url):
+            self.url = url
+
+    class FakeRoute:
+        def __init__(self, url):
+            self.request = FakeRequest(url)
+
+        async def abort(self):
+            aborted.append(self.request.url)
+
+        async def continue_(self):
+            continued.append(self.request.url)
+
+    asyncio.run(app_module._block_external(FakeRoute("https://fonts.googleapis.com/x.css")))
+    asyncio.run(app_module._block_external(FakeRoute("file:///tmp/index.html")))
+    assert aborted == ["https://fonts.googleapis.com/x.css"]
+    assert continued == ["file:///tmp/index.html"]
