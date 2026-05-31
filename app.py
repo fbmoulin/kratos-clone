@@ -870,6 +870,8 @@ def _render_html_to_png(src_html_path: str, out_png_path: str) -> None:
     if not semaphore.acquire(timeout=15):
         raise RenderCapacityExhausted()
     try:
+        if os.path.isfile(out_png_path):
+            return
         out_dir = os.path.dirname(out_png_path)
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png.tmp", dir=out_dir)
         os.close(tmp_fd)
