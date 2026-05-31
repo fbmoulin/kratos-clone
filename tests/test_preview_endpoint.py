@@ -53,20 +53,21 @@ class TestPersonalizePreview:
         assert r.status_code == 400
 
     def test_dotdot_traversal_in_html_dir_not_200(self, client, tmp_capture):
-        # html_dir with ".." should be rejected by routing (<string:> blocks /)
-        # or by _validate_html_dir. Either way, must not serve 200.
+        # ".." collapses to html_dir="etc" via Werkzeug path normalization;
+        # _validate_html_dir rejects it (outside downloads/) -> 400. Never a 200.
         r = client.get("/personalize/preview/../index.html")
-        assert r.status_code != 200
+        assert r.status_code == 400
 
     def test_url_encoded_traversal_not_200(self, client, tmp_capture):
+        # %2E%2E%2F decodes to "../"; Werkzeug merge-slash/normalize returns a
+        # 308 redirect to the canonical path before the view runs. Never a 200.
         r = client.get("/personalize/preview/%2E%2E%2F/index.html")
-        assert r.status_code != 200
+        assert r.status_code == 308
 
-    def test_absolute_path_injection_400(self, client):
-        # html_dir "etc" resolves under DOWNLOAD_FOLDER and won't exist -> 404,
-        # but an attempt to inject "/etc" via the segment must never serve 200.
+    def test_absolute_path_injection_not_found(self, client):
+        # html_dir "etc" resolves under DOWNLOAD_FOLDER and won't exist -> 404.
         r = client.get("/personalize/preview/etc/passwd.html")
-        assert r.status_code != 200
+        assert r.status_code == 404
 
     def test_missing_file_404(self, client, tmp_capture):
         r = client.get(f"/personalize/preview/{tmp_capture}/nope.html")
@@ -76,17 +77,21 @@ class TestPersonalizePreview:
         r = client.get("/personalize/preview/doesnotexist/index.html")
         assert r.status_code == 404
 
-    # --- CSP cases (R2-PRC004 delta) --------------------------------------
+    # --- CSP cases (R2-PRC004: content-type-aware, SVG-only) --------------
 
-    def test_preview_response_has_csp_script_none(self, client, tmp_capture):
+    def test_html_preview_has_no_restrictive_csp(self, client, tmp_capture):
+        # HTML must render full-fidelity in the allow-scripts iframe (R1-PRC006):
+        # no script-blocking CSP on HTML documents.
         r = client.get(f"/personalize/preview/{tmp_capture}/index.html")
+        assert r.status_code == 200
+        assert "script-src 'none'" not in r.headers.get("Content-Security-Policy", "")
+        assert r.headers.get("X-Content-Type-Options") == "nosniff"
+
+    def test_svg_preview_has_strict_csp(self, client, tmp_capture_with_svg):
+        # SVG served as a document gets script-src 'none' to kill the
+        # inline-<script> XSS vector (R2-PRC004). .svg stays in the allowlist.
+        r = client.get(f"/personalize/preview/{tmp_capture_with_svg}/logo.svg")
         assert r.status_code == 200
         csp = r.headers.get("Content-Security-Policy", "")
         assert "script-src 'none'" in csp
         assert "sandbox" in csp
-        assert r.headers.get("X-Content-Type-Options") == "nosniff"
-
-    def test_preview_svg_kept_in_allowlist_with_csp(self, client, tmp_capture_with_svg):
-        r = client.get(f"/personalize/preview/{tmp_capture_with_svg}/logo.svg")
-        assert r.status_code == 200
-        assert "script-src 'none'" in r.headers.get("Content-Security-Policy", "")

@@ -728,7 +728,7 @@ _PREVIEW_ALLOWED_EXTS = frozenset(
 
 
 @app.route("/personalize/preview/<html_dir>/<path:asset_path>", methods=["GET"])
-def personalize_preview(html_dir: str, asset_path: str) -> Response:
+def personalize_preview(html_dir: str, asset_path: str) -> Response | tuple[str, int]:
     """Serve a file from inside downloads/<html_dir>/ for iframe rendering.
 
     Security layers (defense in depth):
@@ -754,17 +754,18 @@ def personalize_preview(html_dir: str, asset_path: str) -> Response:
         origin = request.host_url.rstrip("/")
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Vary"] = "Origin"
-        # Defense-in-depth CSP served WITH the file: a document's own CSP stacks
-        # independently on the iframe sandbox (most-restrictive wins), so
-        # script-src 'none' kills the SVG-as-document inline-script vector even
-        # though the iframe carries allow-scripts. <img>-referenced SVG still
-        # renders (script-inert). Keep .svg in the allowlist.
-        resp.headers["Content-Security-Policy"] = (
-            "default-src 'none'; img-src 'self' data:; "
-            "style-src 'self' 'unsafe-inline'; font-src 'self'; "
-            "script-src 'none'; sandbox"
-        )
+        # R2-PRC004 (content-type-aware, approved 2026-05-30): the SVG-as-document
+        # inline-<script> XSS vector only applies to .svg served as a document, so
+        # the strict CSP is scoped to .svg ONLY. HTML documents must render with
+        # full fidelity inside the allow-scripts iframe (R1-PRC006: captured SPA JS
+        # must run; their relative CSS/images must load). The sandbox attribute
+        # already isolates HTML; in-iframe-phishing residual is accepted per the
+        # trust model. nosniff is cheap defense applied to every response.
         resp.headers["X-Content-Type-Options"] = "nosniff"
+        if ext == ".svg":
+            resp.headers["Content-Security-Policy"] = (
+                "default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; sandbox"
+            )
         return resp
     except (FileNotFoundError, NotFound):
         return ("Not found", 404)
