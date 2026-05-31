@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SPA sample</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    .slide { display: none; }
+    .slide.active { display: block; }
+    #panel[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <!--
+    Deterministic SPA fixture for R2-PRC005. Self-contained, NO network calls.
+    Verifies that captured-site JavaScript executes inside the sandboxed
+    (allow-scripts, opaque-origin) preview iframe: a click toggle and a
+    no-dependency carousel. Real captured SPAs making live API calls render
+    their own error/empty states — faithful reproduction, out of scope.
+  -->
+  <h1>SPA sample</h1>
+
+  <button id="toggle" type="button">Toggle</button>
+  <div id="panel" hidden>shown</div>
+
+  <div id="carousel">
+    <span class="slide active" data-i="0">slide-1</span>
+    <span class="slide" data-i="1">slide-2</span>
+    <span class="slide" data-i="2">slide-3</span>
+  </div>
+  <button id="next" type="button">Next</button>
+
+  <script>
+    document.getElementById('toggle').addEventListener('click', function () {
+      document.getElementById('panel').toggleAttribute('hidden');
+    });
+
+    var i = 0;
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    document.getElementById('next').addEventListener('click', function () {
+      slides[i].classList.remove('active');
+      i = (i + 1) % slides.length;
+      slides[i].classList.add('active');
+    });
+  </script>
+</body>
+</html>
