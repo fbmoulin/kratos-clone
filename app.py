@@ -819,6 +819,17 @@ def personalize_screenshot(html_dir: str) -> Response | tuple[Response, int]:
             resp = jsonify({"error": "render capacity exhausted, try again in a moment"})
             resp.headers["Retry-After"] = "30"
             return resp, 503
+        except Exception as exc:
+            # Mirror personalize_run/personalize_structure: log + structured error
+            # instead of leaking a bare 500 HTML page. Playwright TimeoutError on
+            # page.goto (8s) is the common trigger on heavy captures.
+            logger.error(
+                "personalize_screenshot_render_failed",
+                html_dir=html_dir,
+                which=which,
+                error=str(exc),
+            )
+            return jsonify({"error": "screenshot render failed"}), 500
     return send_file(cache_path, mimetype="image/png")
 
 

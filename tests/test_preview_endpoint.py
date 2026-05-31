@@ -190,6 +190,19 @@ class TestPersonalizeScreenshot:
         assert r.status_code == 503
         assert r.headers.get("Retry-After") == "30"
 
+    def test_render_failure_returns_logged_500(self, client, tmp_capture, monkeypatch):
+        # A non-capacity render failure (e.g. Playwright TimeoutError) is caught,
+        # logged, and returned as structured JSON 500 — not a bare HTML 500 page.
+        import app as app_module
+
+        def boom(src_html_path, out_png_path):
+            raise RuntimeError("playwright timeout")
+
+        monkeypatch.setattr(app_module, "_render_html_to_png", boom)
+        r = client.get(f"/api/personalize/screenshot/{tmp_capture}?which=after")
+        assert r.status_code == 500
+        assert r.get_json()["error"] == "screenshot render failed"
+
 
 def test_screenshot_semaphore_default_value(client):
     """create_app() (via the client fixture) wires RENDER_SEMAPHORE with the
