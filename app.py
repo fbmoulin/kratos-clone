@@ -685,6 +685,91 @@ def personalize_run() -> tuple[Response, int]:
     return jsonify({"output_path": str(out_path) if out_path else None}), 200
 
 
+def _validate_html_dir(html_dir_str: str) -> str | None:
+    """Resolve html_dir_str to an absolute path confined to DOWNLOAD_FOLDER.
+
+    Single source of truth for path security policy. Returns realpath if safe,
+    None if rejected. Rejections: empty/whitespace/"."/"./" ; absolute paths or
+    traversal escaping DOWNLOAD_FOLDER ; symlinks pointing outside DOWNLOAD_FOLDER.
+    """
+    if not html_dir_str or html_dir_str.strip() in ("", ".", "./"):
+        return None
+    target = os.path.realpath(os.path.join(DOWNLOAD_FOLDER, html_dir_str))
+    base = os.path.realpath(DOWNLOAD_FOLDER)
+    if target == base:
+        return None
+    if not target.startswith(base + os.sep):
+        return None
+    return target
+
+
+_PREVIEW_ALLOWED_EXTS = frozenset(
+    {
+        ".html",
+        ".css",
+        ".js",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".svg",
+        ".webp",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".ico",
+        ".json",
+        ".mp3",
+        ".mp4",
+        ".webm",
+    }
+)
+
+
+@app.route("/personalize/preview/<html_dir>/<path:asset_path>", methods=["GET"])
+def personalize_preview(html_dir: str, asset_path: str) -> Response:
+    """Serve a file from inside downloads/<html_dir>/ for iframe rendering.
+
+    Security layers (defense in depth):
+    1. Routing rejects html_dir containing "/" (default <string:> converter).
+    2. Extension allowlist (defends double-extension bypass).
+    3. realpath confinement via _validate_html_dir (../, absolute paths).
+    4. send_from_directory native path-traversal protection on asset_path.
+    """
+    from flask import send_from_directory
+    from werkzeug.exceptions import NotFound
+
+    ext = os.path.splitext(asset_path)[1].lower()
+    if ext not in _PREVIEW_ALLOWED_EXTS:
+        return (f"Extension {ext!r} not allowed", 400)
+    dir_path = _validate_html_dir(html_dir)
+    if dir_path is None:
+        return ("html_dir invalid or outside downloads/", 400)
+    if not os.path.isdir(dir_path):
+        return ("Directory not found", 404)
+    try:
+        resp = send_from_directory(dir_path, asset_path, max_age=3600)
+        # Same-host CORS so @font-face works from the opaque-origin iframe.
+        origin = request.host_url.rstrip("/")
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+        # Defense-in-depth CSP served WITH the file: a document's own CSP stacks
+        # independently on the iframe sandbox (most-restrictive wins), so
+        # script-src 'none' kills the SVG-as-document inline-script vector even
+        # though the iframe carries allow-scripts. <img>-referenced SVG still
+        # renders (script-inert). Keep .svg in the allowlist.
+        resp.headers["Content-Security-Policy"] = (
+            "default-src 'none'; img-src 'self' data:; "
+            "style-src 'self' 'unsafe-inline'; font-src 'self'; "
+            "script-src 'none'; sandbox"
+        )
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+    except (FileNotFoundError, NotFound):
+        return ("Not found", 404)
+
+
 if __name__ == "__main__":
     logger.info("app_starting", port=5001, debug=True)
     create_app()
