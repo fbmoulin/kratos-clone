@@ -220,8 +220,21 @@ Spent ~\$0.105 for the 2 included live tests. Default `pytest -q` skips them.
 
 ## Active WIP — `feat/personalize-preview-modal` branch (2026-05-16)
 
-> **State frozen here for next session.** Branch tip: `abbc741`. Tests: 274
+> **State frozen here for next session.** Branch tip: `a9ef414`. Tests: 276
 > passing (no new tests yet — code not shipped). No PR open.
+>
+> **2026-05-30 UPDATE — plan-review-cycle Round 2 CLOSED.** All 8 open R2
+> findings (R2-PRC003..010) dispositioned with per-finding approval: 7
+> Resolved, 1 No Plan Change (R2-PRC010 Advisory, zero-build single-template
+> contract upheld). R2-PRC004 (SVG/CSP) resolved via deep-researcher-backed
+> decision: add `Content-Security-Policy: default-src 'none'; ...; script-src
+> 'none'; sandbox` + `X-Content-Type-Options: nosniff` on the preview
+> file-serving route; keep `.svg`; no server-side SVG sanitizer (overkill for
+> single-operator trust model). Validator returned exit 0. **Next step:
+> `superpowers:writing-plans`** to convert the corrected spec into a tasked
+> plan under `docs/superpowers/plans/`. Plan Review Log is the source of truth
+> for the 7 Resolved changes — each finding's `plan_changes_made` is
+> implementation-ready.
 
 **What it is**: Visual preview of personalize output. Modal with 3 tabs
 (Inspecionar iframe / Thumb screenshot / Antes-Depois split). Spec at

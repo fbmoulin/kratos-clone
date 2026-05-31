@@ -1064,7 +1064,7 @@ approval_date: 2026-05-16
 
 ##### Finding R2-PRC003: _validate_html_dir symlink-out test is non-portable and underspecified
 
-status: Open
+status: Resolved
 severity: Major
 location: Task 3 step 1, TestValidateHtmlDir symlink case
 
@@ -1074,16 +1074,19 @@ reviewer_concern: |
 why_it_matters: |
   Symlink escape is one of 3 security cases for _validate_html_dir. Flaky/skipped test = unverified security guarantee in affected environments.
 
-decision: pending
+decision: Accept. Specify the symlink-escape test concretely so it is deterministic on Linux/macOS CI and self-skips on Windows rather than flaking. Smallest fix that makes the realpath-confinement guarantee testable.
 plan_changes_made: |
+  Specified the TestValidateHtmlDir symlink case precisely (single-section finding — Task 3 / Testing strategy only):
+  - [x] Execution order Task 3 step 1: the symlink case uses a pytest `tmp_path`-based fixture — create a target dir OUTSIDE DOWNLOAD_FOLDER (e.g. `tmp_path / "outside"`), create a symlink INSIDE a monkeypatched DOWNLOAD_FOLDER pointing at it, assert `_validate_html_dir(symlink_name)` returns None (realpath resolves outside base → rejected). Guard the case with `@pytest.mark.skipif(sys.platform == "win32", reason="os.symlink requires admin/Developer Mode on Windows")`. Fixture teardown handled by `tmp_path` auto-cleanup (no manual unlink).
+  - [x] Testing strategy section: noted that the 9-case TestValidateHtmlDir class includes one platform-guarded symlink case; the other 8 (empty, ".", "./", absolute, traversal, valid, etc.) are platform-independent and always run.
 no_change_rationale: |
-human_approver:
-approval_status: pending
-approval_date:
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-30
 
 ##### Finding R2-PRC004: SVG/JSON XSS via in-iframe phishing (CSP defense missing)
 
-status: Open
+status: Resolved
 severity: Major
 location: _PREVIEW_ALLOWED_EXTS allowlist; R1-PRC001 trust-model rationale
 
@@ -1093,16 +1096,22 @@ reviewer_concern: |
 why_it_matters: |
   Operator's authenticated session vulnerable to phishing UI rendered inside iframe.
 
-decision: pending
+decision: Accept reviewer's defense-in-depth concern; adopt the research-backed minimal hardening (deep-researcher 2026-05-30, sourced to MDN CSP sandbox, W3C CSP2, OWASP CSP cheat sheet). A Content-Security-Policy header served WITH the preview file response is an independent restriction that stacks on the iframe sandbox (most-restrictive wins); `script-src 'none'` kills the SVG-as-top-level-document inline-script vector while `<img>`-referenced SVG still renders (it never executes script in img context). Keep `.svg` in the allowlist — dropping it breaks legitimate <img> SVGs for no security gain once script-src is 'none'. Reject server-side SVG sanitization (nh3/defusedxml dependency + allowlist maintenance) as overkill for a single-operator trust model. The residual in-iframe-phishing risk is inherent to previewing operator-captured content and is accepted under the documented trust model.
 plan_changes_made: |
+  Applied research-backed CSP header (multi-section finding — propagation verified):
+  - [x] Architecture → Backend, personalize_preview file-serving route (`/personalize/preview/<dir>/<asset_path>`): every response sets `Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'none'; sandbox` plus `X-Content-Type-Options: nosniff`. Note: `script-src 'none'` is the single highest-value change.
+  - [x] _PREVIEW_ALLOWED_EXTS: `.svg` retained (decision documented inline as a comment: script-src 'none' neutralizes the document vector; <img>-referenced SVG is script-inert).
+  - [x] Preview security section (the "Iframe opaque-origin" risk row + R2-PRC002 area, ~§Architecture security table): added a row documenting the CSP response header as the SVG/inline-script defense-in-depth layer and the accepted residual in-iframe-phishing risk under the operator-captured trust model.
+  - [x] Testing strategy / Task 3: added a backend test asserting the preview route response carries the exact CSP header (`script-src 'none'` present) and `X-Content-Type-Options: nosniff`; added an SVG-with-inline-<script> fixture served via the route to assert the header is attached (header-presence test, not browser-execution test).
+  - [x] Acceptance criteria: added bullet "Preview file responses carry CSP `script-src 'none'` + nosniff; residual in-iframe-phishing risk documented as accepted under trust model".
 no_change_rationale: |
-human_approver:
-approval_status: pending
-approval_date:
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-30
 
 ##### Finding R2-PRC005: Acceptance criterion "SPA scripts work" unverifiable without fixture
 
-status: Open
+status: Resolved
 severity: Minor
 location: Acceptance criteria; R1-PRC006 resolution
 
@@ -1112,16 +1121,20 @@ reviewer_concern: |
 why_it_matters: |
   Task 7 Playwright smoke passes on static site, fails on real captured SPAs.
 
-decision: pending
+decision: Accept. Make the criterion verifiable by introducing a deterministic, self-contained SPA fixture (no external API calls), and explicitly scope real-SPA-with-live-API behavior out: the preview faithfully renders whatever the captured HTML does, including the captured site's own hydration error states — that is correct preview behavior, not a preview bug.
 plan_changes_made: |
+  Made the SPA acceptance criterion testable (multi-section — propagation verified):
+  - [x] Execution order Task 7 (Playwright smoke): added step to load a fixture `tests/fixtures/spa_sample.html` — a single self-contained file with inline JS implementing (a) a hover/click toggle and (b) a no-dependency carousel, with NO network calls. Assert via Playwright MCP that the toggle flips state on click and the carousel advances.
+  - [x] Acceptance criteria: reworded the "SPA scripts work" bullet to "deterministic SPA fixture (toggle + carousel, no external API) executes correctly in the sandboxed iframe"; this is what `sandbox=allow-scripts` enables.
+  - [x] Out of scope section: added bullet stating that captured SPAs making live API calls during hydration will render their own error/empty states inside the preview — faithful reproduction of the captured site, explicitly not a preview defect.
 no_change_rationale: |
-human_approver:
-approval_status: pending
-approval_date:
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-30
 
 ##### Finding R2-PRC006: personalize_run cache-clear runs BEFORE pipeline — wasted op on failure
 
-status: Open
+status: Resolved
 severity: Minor
 location: Architecture → Frontend section, personalize_run change #2; R1-PRC008 resolution
 
@@ -1131,16 +1144,20 @@ reviewer_concern: |
 why_it_matters: |
   R1-PRC008 intent "operator never sees previous run's screenshot" subtly fails: on pipeline error, operator sees screenshot of previous-run HTML regenerated as if current.
 
-decision: pending
+decision: Accept. Reorder: clear the stale preview-*.png cache only AFTER the pipeline successfully produces new personalized.html. On pipeline failure the operator keeps no preview rather than seeing a stale screenshot regenerated as if current — preserving R1-PRC008's intent across the failure path.
 plan_changes_made: |
+  Reordered cache-clear and covered the failure path (multi-section — propagation verified):
+  - [x] Architecture → Frontend, "Modify personalize_run route" change #2: moved the glob+unlink of preview-*.png to AFTER the pipeline call returns successfully (inside the success branch, before building the JSON response). On exception/failed pipeline the delete does not run and the route returns its existing error response.
+  - [x] Error handling table: updated the "Preview cache stale after re-personalize" row to note the clear is success-gated (failure leaves no fresh artifact and does not regenerate stale HTML as current).
+  - [x] Execution order Task 3: added a pipeline-FAILURE test path — seed a pre-existing preview-*.png, force pipeline to raise, assert (a) the route returns the error response and (b) it does NOT silently regenerate/serve the previous-run HTML as current. The existing no-op/success path test remains.
 no_change_rationale: |
-human_approver:
-approval_status: pending
-approval_date:
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-30
 
 ##### Finding R2-PRC007: External-network-blocked test needs real Playwright but Task 2 mocks it
 
-status: Open
+status: Resolved
 severity: Minor
 location: Task 2 step 1; Testing strategy "External network blocked at render"
 
@@ -1150,16 +1167,19 @@ reviewer_concern: |
 why_it_matters: |
   Implementer mocks Playwright per Task 2, then can't write external-network test as specified. Will skip or write degenerate version.
 
-decision: pending
+decision: Accept. Decouple the network-policy assertion from Playwright entirely: `_block_external` is a plain route-handler callback, so unit-test it in isolation by calling it with a fake Playwright `route` object (a stub exposing `.request.url` and `.abort()`/`.continue_()`), asserting `abort()` for external hosts and `continue_()` for same-host. Task 2 keeps Playwright mocked; no real browser needed.
 plan_changes_made: |
+  Resolved the mock-vs-real structural conflict (single-section finding — Task 2 / Testing strategy):
+  - [x] Execution order Task 2 step 1: clarified that the external-network guarantee is verified by a standalone unit test of the `_block_external` handler using a fake route stub (asserts abort() on a non-loopback/non-same-host URL, continue_() on the served host) — NOT via spying on a live Playwright instance. Playwright itself stays mocked for the render-path tests.
+  - [x] Testing strategy "External network blocked at render" row: reworded to describe the isolated-handler unit test (fake route object) rather than a Playwright spy, removing the structural inconsistency.
 no_change_rationale: |
-human_approver:
-approval_status: pending
-approval_date:
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-30
 
 ##### Finding R2-PRC008: _RENDER_SEMAPHORE module-level — env override test requires importlib.reload
 
-status: Open
+status: Resolved
 severity: Minor
 location: Architecture → Backend module-level constants; Task 2 test "Capacity override via env"
 
@@ -1169,16 +1189,20 @@ reviewer_concern: |
 why_it_matters: |
   Test passes locally but causes flakiness when test order changes. Other tests assume app initialized once.
 
-decision: pending
+decision: Accept. Read KCD_MAX_CONCURRENT_RENDERS and construct the render Semaphore inside `create_app()` (store on the app, e.g. `app.config["RENDER_SEMAPHORE"]`) instead of at module import. The env-override test then exercises it via the existing test factory with `monkeypatch.setenv(...)` + a fresh `create_app()` call — no `importlib.reload(app)`, no Flask-route/logger/rate-limiter re-registration, no cross-test pollution. Aligns with the existing `create_app(start_janitor=False, run_boot_cleanup=False)` factory pattern already used by conftest.
 plan_changes_made: |
+  Moved capacity config into the app factory (multi-section — propagation verified):
+  - [x] Architecture → Backend, module-level constants: removed module-level `_RENDER_SEMAPHORE`/`_MAX_CONCURRENT_RENDERS` initialization; instead `create_app()` reads `KCD_MAX_CONCURRENT_RENDERS` (default 2) and stores the Semaphore on the app (config/attr). The render path acquires it from current_app.
+  - [x] Execution order Task 2 "Capacity override via env" test: rewrote to use `monkeypatch.setenv("KCD_MAX_CONCURRENT_RENDERS", "1")` then `create_app(start_janitor=False, run_boot_cleanup=False)` and assert the semaphore bound is 1 — no importlib.reload.
+  - [x] README / CLAUDE.md command table (env-var docs surface): note KCD_MAX_CONCURRENT_RENDERS is read by create_app at app construction time (so test factory picks it up), consistent with the other KCD_* factory-time knobs.
 no_change_rationale: |
-human_approver:
-approval_status: pending
-approval_date:
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-30
 
 ##### Finding R2-PRC009: test_personalize_app.py existence not verified
 
-status: Open
+status: Resolved
 severity: Minor
 location: Task 3 step 3
 
@@ -1188,16 +1212,18 @@ reviewer_concern: |
 why_it_matters: |
   Implementer judgment call mid-task. Risk of rework or mocking errors.
 
-decision: pending
+decision: Accept. Verified empirically this session (2026-05-30): `tests/test_personalize_app.py` EXISTS and contains 8 `def test_` functions. The full personalize test surface also includes test_personalize_{patcher,sanitize,pipeline,slots,openai_client,smoke}.py plus tests/integration/test_personalize_live.py. Record the verified structure so the implementer extends the right file with no mid-task judgment call.
 plan_changes_made: |
+  Recorded the verified test-file structure (single-section finding — Task 3):
+  - [x] Execution order Task 3 step 3: replaced "Extend tests/test_personalize_app.py" with the verified fact — the file exists (8 test functions as of branch tip on 2026-05-30); the new personalize_run JSON-response and cache-clear assertions extend THIS file. Named the sibling personalize test modules so the implementer does not misplace new cases.
 no_change_rationale: |
-human_approver:
-approval_status: pending
-approval_date:
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-30
 
 ##### Finding R2-PRC010: File map LOC growth ~292 LOC in personalize.html — single-template contract pressure
 
-status: Open
+status: No Plan Change
 severity: Advisory
 location: File map
 
@@ -1207,9 +1233,10 @@ reviewer_concern: |
 why_it_matters: |
   Not a blocker but worth acknowledging.
 
-decision: pending
+decision: No Plan Change. The single-inline-template (one <style> + one <script> per template, zero-build) is an explicit, load-bearing project contract documented in CLAUDE.md ("Don't add a build pipeline … single inline <script> and <style> per template is the contract"). Extracting JS/CSS into partials would violate that contract for a cosmetic LOC concern. ~292 LOC added to personalize.html is acceptable.
 plan_changes_made: |
 no_change_rationale: |
-human_approver:
-approval_status: pending
-approval_date:
+  Extraction is explicitly superseded by the project's zero-build single-template contract (CLAUDE.md "Things to avoid": no build pipeline; single inline <script>+<style> per template). The ~292 LOC growth is intentional and proportionate to a 3-tab modal. Revisit extraction ONLY if a future component pushes personalize.html past a maintainability threshold AND the zero-build contract is renegotiated — neither applies now. Advisory severity does not block execution.
+human_approver: Felipe
+approval_status: Approved
+approval_date: 2026-05-30
