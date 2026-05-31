@@ -239,9 +239,17 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
     limiter.init_app(app)
     # R2-PRC008 (approved 2026-05-30): build at app-construction time so the test
     # factory + monkeypatch.setenv picks up overrides without importlib.reload.
-    app.config["RENDER_SEMAPHORE"] = threading.Semaphore(
-        int(os.getenv("KCD_MAX_CONCURRENT_RENDERS", "2"))
-    )
+    max_renders_raw = os.getenv("KCD_MAX_CONCURRENT_RENDERS", "2")
+    try:
+        max_renders = max(1, int(max_renders_raw))
+    except ValueError:
+        logger.warning(
+            "render_capacity_defaulted",
+            configured_value=max_renders_raw,
+            fallback=2,
+        )
+        max_renders = 2
+    app.config["RENDER_SEMAPHORE"] = threading.Semaphore(max_renders)
     if run_boot_cleanup:
         cleanup_downloads_folder()
     if start_janitor:
