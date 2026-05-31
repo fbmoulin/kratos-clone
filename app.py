@@ -215,6 +215,27 @@ def cleanup_abandoned_sessions() -> None:
             logger.error("janitor_cycle_failed", error=str(e))
 
 
+def _warn_if_rate_limit_misconfigured(storage_uri: str, workers: int) -> None:
+    """M-4 boot check: in-memory rate-limit storage with >1 gunicorn worker.
+
+    Flask-Limiter's `memory://` backend keeps a per-process bucket, so each
+    worker counts requests independently. Run with N workers and the
+    effective rate limit is silently multiplied by N. `entrypoint.sh` pins
+    `--workers 1` to avoid this; if an operator scales workers without also
+    pointing `RATE_LIMIT_STORAGE_URI` at a shared backend (Redis, Memcached),
+    we surface the mismatch here at boot rather than discovering it from a
+    rate-limit miss in prod.
+    """
+    if workers > 1 and storage_uri.startswith(("memory://", "async+memory://")):
+        logger.warning(
+            "rate_limit_storage_misconfigured",
+            workers=workers,
+            storage_uri=storage_uri,
+            reason="in-memory rate-limit storage with multiple gunicorn workers — limits silently multiplied by worker count",
+            fix="set RATE_LIMIT_STORAGE_URI to a shared backend (e.g. redis://...) or keep WEB_CONCURRENCY=1",
+        )
+
+
 def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Flask:
     """Initialize side-effecting parts of the app: ensure DOWNLOAD_FOLDER exists,
     bind the rate limiter, optionally clear stale downloads on boot, and
@@ -237,6 +258,23 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
         os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"),
     )
     limiter.init_app(app)
+    # `os.getenv` returns "" for set-but-empty; `or "1"` collapses that AND
+    # None (unset) to the same default. int() on a positive-string-stripped
+    # value succeeds; non-positive (0, -1) or non-numeric goes to ValueError.
+    workers_raw = os.getenv("WEB_CONCURRENCY") or "1"
+    try:
+        workers = int(workers_raw)
+        if workers < 1:
+            raise ValueError(f"non-positive worker count: {workers}")
+    except ValueError:
+        # Some platforms set WEB_CONCURRENCY to non-numeric values (e.g. "auto")
+        # or to 0/negative. Don't let an observability check abort startup.
+        logger.warning("web_concurrency_parse_failed", provided=workers_raw, fallback=1)
+        workers = 1
+    _warn_if_rate_limit_misconfigured(
+        storage_uri=app.config.get("RATELIMIT_STORAGE_URI", "memory://"),
+        workers=workers,
+    )
     # R2-PRC008 (approved 2026-05-30): build at app-construction time so the test
     # factory + monkeypatch.setenv picks up overrides without importlib.reload.
     max_renders_raw = os.getenv("KCD_MAX_CONCURRENT_RENDERS", "2")
