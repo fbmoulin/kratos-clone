@@ -494,6 +494,7 @@
         .preview-modal__header h2 { margin: 0; font-size: 1.05rem; flex: 0 0 auto; color: var(--text-primary); }
         .preview-modal__tabs { display: flex; gap: 0.35rem; flex: 1 1 auto; }
         .preview-modal__tabs [role="tab"] {
+            width: auto; margin-top: 0;
             padding: 0.4rem 0.85rem; border-radius: 8px;
             border: 1px solid transparent; background: transparent;
             color: var(--text-secondary); cursor: pointer; font: inherit;
@@ -1027,7 +1028,7 @@
 
     function closePreviewModal() {
         previewModal.hidden = true;
-        previewIframe.removeAttribute('src');  // stop the framed page
+        previewIframe.src = 'about:blank';  // reliably unloads the framed page (code-review M1)
         if (lastFocusedBeforeModal && lastFocusedBeforeModal.focus) {
             lastFocusedBeforeModal.focus();
         } else {
@@ -1099,8 +1100,22 @@
     previewModal.querySelectorAll('[data-close]').forEach(function (el) {
         el.addEventListener('click', closePreviewModal);
     });
-    previewModal.querySelectorAll('[role="tab"]').forEach(function (tab) {
+    var previewTabs = Array.prototype.slice.call(previewModal.querySelectorAll('[role="tab"]'));
+    previewTabs.forEach(function (tab, i) {
         tab.addEventListener('click', function () { switchPreviewTab(this.getAttribute('data-tab')); });
+        // WAI-ARIA tablist keyboard pattern (code-review I1): Arrow/Home/End move
+        // focus + activate, since non-selected tabs are removed from Tab order.
+        tab.addEventListener('keydown', function (e) {
+            var next = null;
+            if (e.key === 'ArrowRight') next = previewTabs[(i + 1) % previewTabs.length];
+            else if (e.key === 'ArrowLeft') next = previewTabs[(i - 1 + previewTabs.length) % previewTabs.length];
+            else if (e.key === 'Home') next = previewTabs[0];
+            else if (e.key === 'End') next = previewTabs[previewTabs.length - 1];
+            if (!next) return;
+            e.preventDefault();
+            switchPreviewTab(next.getAttribute('data-tab'));
+            next.focus();
+        });
     });
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !previewModal.hidden) { closePreviewModal(); return; }
