@@ -218,10 +218,34 @@ Spent ~\$0.105 for the 2 included live tests. Default `pytest -q` skips them.
 
 ---
 
-## Active WIP — `feat/personalize-preview-modal` branch (2026-05-16)
+## Feature — `feat/personalize-preview-modal` branch (IMPLEMENTED 2026-05-31)
 
-> **State frozen here for next session.** Branch tip: `a9ef414`. Tests: 276
-> passing (no new tests yet — code not shipped). No PR open.
+> **Status: COMPLETE on branch, NOT pushed.** Tests: **321 passed + 3 skipped**
+> (was 274; +1 skipped = `RUN_PLAYWRIGHT_LIVE` render test). ruff + mypy(app.py)
+> + bandit(app.py, medium) clean. No PR yet — push awaits explicit approval.
+>
+> **Shipped over plan `87a814b`**: 3 backend routes (`personalize_preview` +
+> content-type-aware CSP `.svg`-only so HTML SPAs still run; `personalize_screenshot`
+> + Playwright render — semaphore in `create_app`, isolated `_block_external`,
+> logged 500, `type="png"` fix [temp-ext bug caught by the smoke]; `personalize_run`
+> retrofit — shared `_validate_html_dir`, success-gated `preview-*.png` clear,
+> `html_dir` in JSON) + frontend modal in `templates/personalize.html` (result-card
+> + 3-tab ARIA dialog, glassmorphism on `:root` tokens, modal JS: open/close/Esc/
+> backdrop, focus trap, tablist arrow-key nav, lazy thumb/compare loaders,
+> screenshot cache-bust). Per-task two-stage reviews + final integration review;
+> code-review must-fixes I1/I2/I3 + M1/M2 closed. **Playwright smoke VERIFIED**
+> (SPA scripts ran in iframe — toggle+carousel; arrow-key tab nav; Esc close +
+> focus return + iframe about:blank; CSP .svg-only via curl) and **live render
+> test PASSED** (real headless Chromium → valid 1280×800 PNG, gated
+> `RUN_PLAYWRIGHT_LIVE=1`). **INT-1 accepted limitation**: self-hosted @font-face
+> → system fallback in iframe (opaque null origin vs same-host ACAO; widening to
+> `*` reopens R2-PRC002) — documented in app.py. **Remaining**: push + `gh pr
+> create` (needs explicit approval). Deferred (minor): ArrowRight wrap leaves
+> focus on last tab (all reachable); optional `os.path.isdir`→404 guard in
+> `personalize_run` (noted inline).
+>
+> _Historical (superseded):_ original 2026-05-16 freeze was at `a9ef414`, 276
+> tests, no code shipped.
 >
 > **2026-05-30 UPDATE — plan-review-cycle Round 2 CLOSED.** All 8 open R2
 > findings (R2-PRC003..010) dispositioned with per-finding approval: 7

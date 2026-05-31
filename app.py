@@ -768,7 +768,14 @@ def personalize_preview(html_dir: str, asset_path: str) -> Response | tuple[str,
         return ("Directory not found", 404)
     try:
         resp = send_from_directory(dir_path, asset_path, max_age=3600)
-        # Same-host CORS so @font-face works from the opaque-origin iframe.
+        # Same-host CORS (not "*") so only this Flask host can read preview content
+        # cross-origin via JS — the R2-PRC002 posture.
+        # KNOWN LIMITATION (INT-1): the sandbox=allow-scripts iframe is an opaque
+        # (null) origin, so CORS-gated @font-face fetches send Origin: null, which
+        # does NOT match this host header — self-hosted webfonts fall back to system
+        # fonts in the Inspecionar tab. Accepted (cosmetic, single-operator); not
+        # widened to "*" because that re-opens what R2-PRC002 closed. Non-CORS
+        # subresources (img/css/script tags) load fine regardless of this header.
         origin = request.host_url.rstrip("/")
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Vary"] = "Origin"
