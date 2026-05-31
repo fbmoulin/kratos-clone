@@ -973,6 +973,11 @@
                 // textContent only = no innerHTML interpolation of server data
                 $('output-path-display').textContent = res.data.output_path || '(none)';
                 $('btn-open-preview').setAttribute('data-html-dir', res.data.html_dir || '');
+                // New run → invalidate lazy-load cache + bump screenshot cache-buster
+                // so a re-personalized dir never shows the previous run's images.
+                loadedTabsForDir = {};
+                previewRunCounter += 1;
+                previewCacheBust = String(previewRunCounter);
                 // Focus the result so AT users hear it
                 stepOut.setAttribute('tabindex', '-1');
                 stepOut.focus();
@@ -988,6 +993,24 @@
     var previewIframe = $('preview-iframe');
     var lastFocusedBeforeModal = null;
     var loadedTabsForDir = {};  // {htmlDir: {thumb: true, compare: true}}
+    var previewCacheBust = '';  // bumped per run so re-personalize never shows a stale screenshot
+    var previewRunCounter = 0;  // monotonic; feeds previewCacheBust
+
+    function modalFocusables() {
+        return Array.prototype.slice.call(previewModal.querySelectorAll(
+            'button, [href], iframe, [tabindex]:not([tabindex="-1"])'
+        )).filter(function (el) { return !el.hidden && el.offsetParent !== null; });
+    }
+
+    function trapFocus(e) {
+        // Keep Tab focus inside the dialog while it is open (WCAG 2.4.3).
+        if (e.key !== 'Tab' || previewModal.hidden) return;
+        var f = modalFocusables();
+        if (!f.length) return;
+        var first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
 
     function openPreviewModal(htmlDir, outputPath) {
         if (!htmlDir) { setStatus('run-status', 'html_dir ausente — não é possível abrir o preview', 'error'); return; }
@@ -1031,7 +1054,10 @@
     }
 
     function screenshotUrl(htmlDir, which) {
-        return '/api/personalize/screenshot/' + encodeURIComponent(htmlDir) + '?which=' + which;
+        // previewCacheBust changes per successful run so a re-personalized dir never
+        // serves the browser-cached PNG of the previous run (completes R2-PRC006).
+        return '/api/personalize/screenshot/' + encodeURIComponent(htmlDir)
+            + '?which=' + which + (previewCacheBust ? '&t=' + previewCacheBust : '');
     }
 
     function loadThumbForDir(htmlDir) {
@@ -1077,7 +1103,8 @@
         tab.addEventListener('click', function () { switchPreviewTab(this.getAttribute('data-tab')); });
     });
     document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && !previewModal.hidden) { closePreviewModal(); }
+        if (e.key === 'Escape' && !previewModal.hidden) { closePreviewModal(); return; }
+        trapFocus(e);
     });
 
     // Brief-assist: sample brief + 3 icebreaker chips populate the textarea
