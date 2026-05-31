@@ -876,7 +876,10 @@ def _render_html_to_png(src_html_path: str, out_png_path: str) -> None:
                         page = await ctx.new_page()
                         await page.route("**/*", _block_external)
                         await page.goto(f"file://{src_html_path}", wait_until="load", timeout=8000)
-                        await page.screenshot(path=tmp_path, full_page=False)
+                        # Explicit type: the atomic-write temp file ends in
+                        # ".png.tmp", and Playwright infers format from the path
+                        # extension (".tmp" -> unsupported). Pin PNG.
+                        await page.screenshot(path=tmp_path, full_page=False, type="png")
                     finally:
                         await browser.close()
 
