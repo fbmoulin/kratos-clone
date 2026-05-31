@@ -801,7 +801,7 @@ def personalize_preview(html_dir: str, asset_path: str) -> Response | tuple[str,
 
     ext = os.path.splitext(asset_path)[1].lower()
     if ext not in _PREVIEW_ALLOWED_EXTS:
-        return jsonify({"error": f"Extension {ext!r} not allowed"}), 400
+        return (f"Extension {ext!r} not allowed", 400)
     dir_path = _validate_html_dir(html_dir)
     if dir_path is None:
         return ("html_dir invalid or outside downloads/", 400)
