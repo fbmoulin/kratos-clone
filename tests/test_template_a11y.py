@@ -476,3 +476,61 @@ def test_backdrop_filter_present(client):
     for route in ("/", "/personalize"):
         html = client.get(route).data.decode("utf-8")
         assert "backdrop-filter" in html, f"{route} missing backdrop-filter for glass effect"
+
+
+# ── Preview modal (Tasks 4-6) ────────────────────────────────────────────────
+
+
+def test_preview_modal_is_accessible_dialog(client):
+    """Modal must be a labelled, hidden-on-load ARIA dialog."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert 'id="preview-modal"' in html
+    assert 'role="dialog"' in html
+    assert 'aria-modal="true"' in html
+    assert 'aria-labelledby="preview-modal-title"' in html
+    # Hidden until opened (the `hidden` attribute on the modal container).
+    assert 'class="preview-modal" hidden' in html
+
+
+def test_preview_modal_has_three_tabs(client):
+    """Three tablist buttons: Inspecionar / Thumb / Antes-Depois."""
+    html = client.get("/personalize").data.decode("utf-8")
+    # Count the markup buttons, not CSS [role="tab"] selectors which also match.
+    assert html.count('<button role="tab"') == 3
+    assert 'data-tab="inspect"' in html
+    assert 'data-tab="thumb"' in html
+    assert 'data-tab="compare"' in html
+    # Inspect tab is the default selected one.
+    assert 'data-tab="inspect" aria-selected="true"' in html
+
+
+def test_preview_iframe_is_sandboxed_without_same_origin(client):
+    """Security contract: iframe runs scripts in an opaque origin — never same-origin."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert 'sandbox="allow-scripts"' in html
+    # allow-same-origin would defeat the opaque-origin isolation (R1-PRC006).
+    assert "allow-same-origin" not in html
+
+
+def test_result_card_replaces_output_summary(client):
+    """The old #output-summary is gone; the result-card + open-preview button replace it."""
+    html = client.get("/personalize").data.decode("utf-8")
+    assert 'id="output-summary"' not in html
+    assert 'id="result-card"' in html
+    assert 'id="btn-open-preview"' in html
+    assert 'id="output-path-display"' in html
+
+
+def test_preview_modal_js_handlers_present(client):
+    """The inline IIFE wires open/close/tab-switch + lazy loaders + Esc handler."""
+    html = client.get("/personalize").data.decode("utf-8")
+    for symbol in (
+        "openPreviewModal",
+        "closePreviewModal",
+        "switchPreviewTab",
+        "loadThumbForDir",
+        "loadCompareForDir",
+    ):
+        assert symbol in html, f"missing modal JS handler: {symbol}"
+    assert "'Escape'" in html  # Esc closes the modal
+    assert "/api/personalize/screenshot/" in html  # lazy loaders hit the screenshot route

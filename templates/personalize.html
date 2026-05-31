@@ -444,6 +444,98 @@
             input, textarea, select { transition: none; }
             .secondary-cta__arrow { transition: none; }
         }
+
+        /* ── Preview result-card + modal (Tasks 4-6) ──────────────────── */
+        .result-card {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 1rem; flex-wrap: wrap;
+            padding: 1rem 1.25rem; border: 1px solid var(--ink-border);
+            border-radius: 12px; background: var(--ink-elevated);
+        }
+        .result-card__meta { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+        .result-card__label { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--orange-core); }
+        .result-card__meta code { font-size: 0.85rem; word-break: break-all; color: var(--text-secondary); }
+        /* Override the generic full-width button rule inside the flex result-card. */
+        #btn-open-preview {
+            width: auto; margin-top: 0; flex: 0 0 auto;
+            padding: 0.6rem 1.1rem; border-radius: 10px; cursor: pointer;
+            font: inherit; font-weight: 600; color: #fff; border: none;
+            background: linear-gradient(135deg, var(--orange-core) 0%, var(--orange-bright) 100%);
+        }
+        #btn-open-preview:hover { box-shadow: var(--shadow-glow); }
+        #btn-open-preview:focus-visible { outline: 3px solid var(--orange-core); outline-offset: 2px; }
+
+        .preview-modal {
+            position: fixed; inset: 0; z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 1.5rem;
+        }
+        .preview-modal[hidden] { display: none; }
+        .preview-modal__backdrop {
+            position: absolute; inset: 0;
+            background: rgba(5, 5, 12, 0.72);
+            backdrop-filter: blur(4px);
+        }
+        .preview-modal__panel {
+            position: relative; z-index: 1;
+            display: flex; flex-direction: column;
+            width: min(1100px, 100%); height: min(86vh, 900px);
+            background: rgba(17, 17, 32, 0.92);
+            backdrop-filter: blur(24px) saturate(150%);
+            border: 1px solid var(--ink-border); border-radius: 16px;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,107,53,0.08);
+            overflow: hidden;
+        }
+        .preview-modal__header {
+            display: flex; align-items: center; gap: 1rem;
+            padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--ink-border);
+            flex-wrap: wrap;
+        }
+        .preview-modal__header h2 { margin: 0; font-size: 1.05rem; flex: 0 0 auto; color: var(--text-primary); }
+        .preview-modal__tabs { display: flex; gap: 0.35rem; flex: 1 1 auto; }
+        .preview-modal__tabs [role="tab"] {
+            padding: 0.4rem 0.85rem; border-radius: 8px;
+            border: 1px solid transparent; background: transparent;
+            color: var(--text-secondary); cursor: pointer; font: inherit;
+            transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+        }
+        .preview-modal__tabs [role="tab"]:hover { color: var(--orange-bright); }
+        .preview-modal__tabs [role="tab"][aria-selected="true"] {
+            background: var(--orange-glow-soft); border-color: var(--orange-core); color: var(--orange-bright);
+        }
+        .preview-modal__tabs [role="tab"]:focus-visible { outline: 2px solid var(--orange-core); outline-offset: 2px; }
+        .preview-modal__close {
+            flex: 0 0 auto; width: 2rem; height: 2rem; line-height: 1; padding: 0; margin: 0;
+            font-size: 1.4rem; border-radius: 8px; cursor: pointer;
+            background: transparent; border: 1px solid var(--ink-border); color: var(--text-secondary);
+        }
+        .preview-modal__close:hover { border-color: var(--orange-core); color: var(--orange-bright); }
+        .preview-modal__close:focus-visible { outline: 2px solid var(--orange-core); outline-offset: 2px; }
+        .preview-modal__body { flex: 1 1 auto; min-height: 0; position: relative; }
+        .preview-pane { display: none; height: 100%; overflow: auto; padding: 1rem; }
+        .preview-pane--active { display: block; }
+        .preview-pane[hidden] { display: none; }
+        #preview-iframe { width: 100%; height: calc(100% - 2.2rem); border: 0; border-radius: 10px; background: #fff; }
+        .preview-pane__note { margin: 0.6rem 0 0; font-size: 0.78rem; color: var(--text-secondary); }
+        .preview-thumb, .preview-compare { color: var(--text-secondary); padding: 1rem; }
+        #preview-thumb-img { max-width: 100%; height: auto; border-radius: 10px; display: block; }
+        .preview-compare__split { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+        .preview-compare__before, .preview-compare__after { position: relative; }
+        .preview-compare__split img { max-width: 100%; height: auto; border-radius: 10px; display: block; }
+        .preview-compare__badge {
+            position: absolute; top: 0.5rem; left: 0.5rem; z-index: 1;
+            padding: 0.15rem 0.5rem; border-radius: 6px; font-size: 0.7rem; letter-spacing: 0.05em;
+            background: rgba(5,5,12,0.7); color: var(--text-secondary);
+        }
+        .preview-compare__badge--accent { background: var(--orange-core); color: #fff; }
+        @media (max-width: 720px) {
+            .preview-compare__split { grid-template-columns: 1fr; }
+            .preview-modal__panel { height: 92vh; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .preview-modal__backdrop { backdrop-filter: none; }
+            .preview-modal__tabs [role="tab"] { transition: none; }
+        }
     </style>
 </head>
 <body>
@@ -598,7 +690,15 @@
 
     <section id="step-out" class="hidden" aria-labelledby="step-out-heading">
         <h2 id="step-out-heading">3. Resultado</h2>
-        <div id="output-summary"></div>
+        <div class="result-card" id="result-card">
+            <div class="result-card__meta">
+                <span class="result-card__label">Saída</span>
+                <code id="output-path-display"></code>
+            </div>
+            <button type="button" id="btn-open-preview" class="btn-primary" data-html-dir="">
+                Abrir preview <span aria-hidden="true">→</span>
+            </button>
+        </div>
     </section>
 
     </section>
@@ -608,6 +708,57 @@
             <span class="secondary-cta__arrow" aria-hidden="true">←</span>
             Voltar para download de site
         </a>
+    </div>
+
+    <div id="preview-modal" class="preview-modal" hidden role="dialog"
+         aria-modal="true" aria-labelledby="preview-modal-title">
+      <div class="preview-modal__backdrop" data-close></div>
+      <div class="preview-modal__panel">
+        <header class="preview-modal__header">
+          <h2 id="preview-modal-title">Preview do resultado</h2>
+          <nav class="preview-modal__tabs" role="tablist" aria-label="Modos de preview">
+            <button role="tab" data-tab="inspect" aria-selected="true"
+                    aria-controls="preview-pane-inspect" id="preview-tab-inspect">
+              Inspecionar
+            </button>
+            <button role="tab" data-tab="thumb" aria-selected="false"
+                    aria-controls="preview-pane-thumb" id="preview-tab-thumb" tabindex="-1">
+              Thumb
+            </button>
+            <button role="tab" data-tab="compare" aria-selected="false"
+                    aria-controls="preview-pane-compare" id="preview-tab-compare" tabindex="-1">
+              Antes / Depois
+            </button>
+          </nav>
+          <button type="button" data-close class="preview-modal__close" aria-label="Fechar preview">×</button>
+        </header>
+        <div class="preview-modal__body">
+          <div role="tabpanel" id="preview-pane-inspect"
+               aria-labelledby="preview-tab-inspect" class="preview-pane preview-pane--active">
+            <iframe id="preview-iframe" title="Preview do site personalizado" sandbox="allow-scripts" credentialless></iframe>
+            <p class="preview-pane__note">Preview executa scripts em origem isolada — chamadas de API, cookies e storage da página original não funcionam aqui.</p>
+          </div>
+          <div role="tabpanel" id="preview-pane-thumb"
+               aria-labelledby="preview-tab-thumb" class="preview-pane" hidden>
+            <div class="preview-thumb" id="preview-thumb-loading">Gerando thumb…</div>
+            <img id="preview-thumb-img" alt="Thumb do site personalizado" hidden />
+          </div>
+          <div role="tabpanel" id="preview-pane-compare"
+               aria-labelledby="preview-tab-compare" class="preview-pane" hidden>
+            <div class="preview-compare" id="preview-compare-loading">Gerando antes/depois…</div>
+            <div class="preview-compare__split" id="preview-compare-split" hidden>
+              <div class="preview-compare__before">
+                <span class="preview-compare__badge">ANTES</span>
+                <img id="preview-compare-before-img" alt="Site original" />
+              </div>
+              <div class="preview-compare__after">
+                <span class="preview-compare__badge preview-compare__badge--accent">DEPOIS</span>
+                <img id="preview-compare-after-img" alt="Site personalizado" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 </main>
 </div>
@@ -819,12 +970,9 @@
                 stepOut.classList.remove('hidden');
                 markStepComplete(2);  // U6: Confirmar done → Resultado active
                 markStepComplete(3);  // U6: Resultado done → all complete (terminal state)
-                // textContent + manual element build = no innerHTML interpolation of server data
-                var summary = $('output-summary');
-                summary.textContent = 'Saída: ';
-                var code = document.createElement('code');
-                code.textContent = res.data.output_path || '(none)';
-                summary.appendChild(code);
+                // textContent only = no innerHTML interpolation of server data
+                $('output-path-display').textContent = res.data.output_path || '(none)';
+                $('btn-open-preview').setAttribute('data-html-dir', res.data.html_dir || '');
                 // Focus the result so AT users hear it
                 stepOut.setAttribute('tabindex', '-1');
                 stepOut.focus();
@@ -833,6 +981,103 @@
                 setBusy(false);
                 setStatus('run-status', resolveError({ networkError: true }), 'error');
             });
+    });
+
+    // ── Preview modal (Tasks 5-6) ─────────────────────────────────────────
+    var previewModal = $('preview-modal');
+    var previewIframe = $('preview-iframe');
+    var lastFocusedBeforeModal = null;
+    var loadedTabsForDir = {};  // {htmlDir: {thumb: true, compare: true}}
+
+    function openPreviewModal(htmlDir, outputPath) {
+        if (!htmlDir) { setStatus('run-status', 'html_dir ausente — não é possível abrir o preview', 'error'); return; }
+        lastFocusedBeforeModal = document.activeElement;
+        // Inspecionar tab loads personalized.html through the sandboxed preview route.
+        previewIframe.setAttribute(
+            'src', '/personalize/preview/' + encodeURIComponent(htmlDir) + '/personalized.html'
+        );
+        switchPreviewTab('inspect');
+        previewModal.hidden = false;
+        var closeBtn = previewModal.querySelector('.preview-modal__close');
+        if (closeBtn) closeBtn.focus();
+    }
+
+    function closePreviewModal() {
+        previewModal.hidden = true;
+        previewIframe.removeAttribute('src');  // stop the framed page
+        if (lastFocusedBeforeModal && lastFocusedBeforeModal.focus) {
+            lastFocusedBeforeModal.focus();
+        } else {
+            $('btn-open-preview').focus();
+        }
+    }
+
+    function switchPreviewTab(tabName) {
+        var tabs = previewModal.querySelectorAll('[role="tab"]');
+        tabs.forEach(function (tab) {
+            var isActive = tab.getAttribute('data-tab') === tabName;
+            tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            tab.tabIndex = isActive ? 0 : -1;
+        });
+        var panes = previewModal.querySelectorAll('.preview-pane');
+        panes.forEach(function (pane) {
+            var matches = pane.id === 'preview-pane-' + tabName;
+            pane.classList.toggle('preview-pane--active', matches);
+            pane.hidden = !matches;
+        });
+        var htmlDir = $('btn-open-preview').getAttribute('data-html-dir');
+        if (tabName === 'thumb') { loadThumbForDir(htmlDir); }
+        else if (tabName === 'compare') { loadCompareForDir(htmlDir); }
+    }
+
+    function screenshotUrl(htmlDir, which) {
+        return '/api/personalize/screenshot/' + encodeURIComponent(htmlDir) + '?which=' + which;
+    }
+
+    function loadThumbForDir(htmlDir) {
+        if (!htmlDir) return;
+        loadedTabsForDir[htmlDir] = loadedTabsForDir[htmlDir] || {};
+        if (loadedTabsForDir[htmlDir].thumb) return;  // lazy: load once per dir
+        loadedTabsForDir[htmlDir].thumb = true;
+        var loading = $('preview-thumb-loading');
+        var img = $('preview-thumb-img');
+        loading.hidden = false; img.hidden = true;
+        img.onload = function () { loading.hidden = true; img.hidden = false; };
+        img.onerror = function () { loading.textContent = 'Falha ao gerar thumb.'; loadedTabsForDir[htmlDir].thumb = false; };
+        img.src = screenshotUrl(htmlDir, 'after');
+    }
+
+    function loadCompareForDir(htmlDir) {
+        if (!htmlDir) return;
+        loadedTabsForDir[htmlDir] = loadedTabsForDir[htmlDir] || {};
+        if (loadedTabsForDir[htmlDir].compare) return;
+        loadedTabsForDir[htmlDir].compare = true;
+        var loading = $('preview-compare-loading');
+        var split = $('preview-compare-split');
+        var beforeImg = $('preview-compare-before-img');
+        var afterImg = $('preview-compare-after-img');
+        loading.hidden = false; split.hidden = true;
+        Promise.all([
+            new Promise(function (resolve, reject) { beforeImg.onload = resolve; beforeImg.onerror = reject; beforeImg.src = screenshotUrl(htmlDir, 'before'); }),
+            new Promise(function (resolve, reject) { afterImg.onload = resolve; afterImg.onerror = reject; afterImg.src = screenshotUrl(htmlDir, 'after'); })
+        ]).then(function () {
+            loading.hidden = true; split.hidden = false;
+        }).catch(function () {
+            loading.textContent = 'Falha ao gerar antes/depois.'; loadedTabsForDir[htmlDir].compare = false;
+        });
+    }
+
+    $('btn-open-preview').addEventListener('click', function () {
+        openPreviewModal(this.getAttribute('data-html-dir'), $('output-path-display').textContent);
+    });
+    previewModal.querySelectorAll('[data-close]').forEach(function (el) {
+        el.addEventListener('click', closePreviewModal);
+    });
+    previewModal.querySelectorAll('[role="tab"]').forEach(function (tab) {
+        tab.addEventListener('click', function () { switchPreviewTab(this.getAttribute('data-tab')); });
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !previewModal.hidden) { closePreviewModal(); }
     });
 
     // Brief-assist: sample brief + 3 icebreaker chips populate the textarea
