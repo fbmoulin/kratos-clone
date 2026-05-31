@@ -11,6 +11,11 @@ conftest.py because Task 3's tests reuse them from a different file.
 
 from __future__ import annotations
 
+import os
+import sys
+
+import pytest
+
 # A 1x1 transparent PNG (smallest valid PNG) used by route-level happy-path
 # tests so we never launch a real browser in the unit suite.
 PNG_1x1 = bytes.fromhex(
@@ -202,6 +207,69 @@ class TestPersonalizeScreenshot:
         r = client.get(f"/api/personalize/screenshot/{tmp_capture}?which=after")
         assert r.status_code == 500
         assert r.get_json()["error"] == "screenshot render failed"
+
+
+class TestValidateHtmlDir:
+    """Direct unit tests of app._validate_html_dir (R1-PRC007 helper).
+
+    Task 1/2 exercised the helper only indirectly through the preview/screenshot
+    routes; these cover its policy directly, including a portable symlink-escape
+    case (R2-PRC003)."""
+
+    def test_empty_returns_none(self, capture_root):
+        import app as app_module
+
+        assert app_module._validate_html_dir("") is None
+
+    def test_dot_returns_none(self, capture_root):
+        import app as app_module
+
+        assert app_module._validate_html_dir(".") is None
+
+    def test_dotslash_returns_none(self, capture_root):
+        import app as app_module
+
+        assert app_module._validate_html_dir("./") is None
+
+    def test_whitespace_returns_none(self, capture_root):
+        import app as app_module
+
+        assert app_module._validate_html_dir("   ") is None
+
+    def test_absolute_path_returns_none(self, capture_root):
+        import app as app_module
+
+        assert app_module._validate_html_dir("/etc") is None
+
+    def test_traversal_returns_none(self, capture_root):
+        import app as app_module
+
+        assert app_module._validate_html_dir("../etc") is None
+
+    def test_midpath_traversal_returns_none(self, capture_root):
+        import app as app_module
+
+        assert app_module._validate_html_dir("foo/../../etc") is None
+
+    def test_valid_dir_returns_realpath(self, capture_root, tmp_capture):
+        import app as app_module
+
+        result = app_module._validate_html_dir(tmp_capture)
+        assert result is not None and result.endswith(tmp_capture)
+
+    # R2-PRC003: portable symlink-escape test
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="os.symlink requires admin/Developer Mode on Windows",
+    )
+    def test_rejects_symlink_escape(self, capture_root):
+        import app as app_module
+
+        outside = capture_root.parent / "outside"
+        outside.mkdir()
+        (outside / "secret.html").write_text("x")
+        os.symlink(outside, capture_root / "evil")  # symlink inside base -> outside
+        assert app_module._validate_html_dir("evil") is None
 
 
 def test_screenshot_semaphore_default_value(client):

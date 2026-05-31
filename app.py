@@ -660,18 +660,19 @@ def personalize_run() -> tuple[Response, int]:
     if len(logo_bytes) > _PERSONALIZE_LOGO_MAX_BYTES:
         return jsonify({"error": "logo exceeds 2 MiB cap"}), 413
 
-    # Confine html_dir to DOWNLOAD_FOLDER to prevent traversal.
-    html_dir = os.path.realpath(os.path.join(DOWNLOAD_FOLDER, html_dir_str))
-    base = os.path.realpath(DOWNLOAD_FOLDER)
-    if not html_dir.startswith(base + os.sep) and html_dir != base:
-        return jsonify({"error": "html_dir must be inside downloads/"}), 400
+    # R1-PRC007: confine html_dir to DOWNLOAD_FOLDER via the shared validator
+    # (single source of truth for path security; rejects the bare downloads root,
+    # which has no index.html to personalize anyway).
+    dir_path = _validate_html_dir(html_dir_str)
+    if dir_path is None:
+        return jsonify({"error": "html_dir invalid or outside downloads/"}), 400
 
     from personalize.openai_client import BudgetExceededError
     from personalize.pipeline import run_pipeline
 
     try:
         out_path = run_pipeline(
-            Path(html_dir),
+            Path(dir_path),
             raw_brief="",  # not used when override provided
             logo_bytes=logo_bytes,
             structured_brief_override=brief,
@@ -687,7 +688,19 @@ def personalize_run() -> tuple[Response, int]:
         logger.error("personalize_run_failed", error=str(exc))
         return jsonify({"error": "pipeline failed"}), 502
 
-    return jsonify({"output_path": str(out_path) if out_path else None}), 200
+    import glob
+
+    # R2-PRC006 (approved 2026-05-30): clear stale preview screenshots only AFTER a
+    # successful re-personalize, so a pipeline failure never leaves a previous run's
+    # screenshot to be served as if current. Best-effort; next render replaces atomically.
+    for stale in glob.glob(os.path.join(dir_path, "preview-*.png")):
+        with contextlib.suppress(OSError):
+            os.unlink(stale)
+
+    return (
+        jsonify({"output_path": str(out_path) if out_path else None, "html_dir": html_dir_str}),
+        200,
+    )
 
 
 def _validate_html_dir(html_dir_str: str) -> str | None:

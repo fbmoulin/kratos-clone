@@ -171,3 +171,70 @@ def test_run_happy_path(client, captured_dir, tmp_path):
     assert body["output_path"] is not None
     assert body["output_path"].endswith("personalized.html")
     assert (captured_dir / "personalized.html").exists()
+
+
+def _run_form(html_dir: str = "site-A") -> dict:
+    """Multipart form body for /api/personalize/run with a valid brief + logo."""
+    return {
+        "brief": json.dumps(
+            {
+                "company": "Acme",
+                "tagline": "Move fast",
+                "audience": "indie devs",
+                "category": "developer tools",
+                "tone": ["friendly", "direct"],
+            }
+        ),
+        "html_dir": html_dir,
+        "logo": (io.BytesIO(_png_bytes()), "logo.png"),
+    }
+
+
+def test_run_success_json_includes_html_dir(client, captured_dir):
+    """Change C: the success response echoes the submitted html_dir form field."""
+    with patch("personalize.pipeline.run_pipeline") as mock_run:
+        mock_run.return_value = captured_dir / "personalized.html"
+        resp = client.post(
+            "/api/personalize/run",
+            data=_run_form("site-A"),
+            content_type="multipart/form-data",
+        )
+    assert resp.status_code == 200
+    assert resp.get_json()["html_dir"] == "site-A"
+
+
+def test_run_success_clears_stale_preview_screenshots(client, captured_dir):
+    """R2-PRC006: a successful re-personalize clears stale preview-*.png so a
+    previous run's screenshot is never served as if current."""
+    before = captured_dir / "preview-before.png"
+    after = captured_dir / "preview-after.png"
+    before.write_bytes(_png_bytes())
+    after.write_bytes(_png_bytes())
+
+    with patch("personalize.pipeline.run_pipeline") as mock_run:
+        mock_run.return_value = captured_dir / "personalized.html"
+        resp = client.post(
+            "/api/personalize/run",
+            data=_run_form("site-A"),
+            content_type="multipart/form-data",
+        )
+    assert resp.status_code == 200
+    assert not before.exists()
+    assert not after.exists()
+
+
+def test_run_failure_does_not_clear_preview_screenshots(client, captured_dir):
+    """R2-PRC006: on pipeline failure the cache clear must NOT run, so a prior
+    run's screenshot survives rather than being silently dropped on a failed run."""
+    after = captured_dir / "preview-after.png"
+    after.write_bytes(_png_bytes())
+
+    with patch("personalize.pipeline.run_pipeline") as mock_run:
+        mock_run.side_effect = RuntimeError("boom")
+        resp = client.post(
+            "/api/personalize/run",
+            data=_run_form("site-A"),
+            content_type="multipart/form-data",
+        )
+    assert resp.status_code == 502
+    assert after.exists()  # cache clear did NOT run on the failure path
