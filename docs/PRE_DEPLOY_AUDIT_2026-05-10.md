@@ -14,7 +14,7 @@
 | Severity | Count | Status |
 |---|---|---|
 | 🔴 BLOCKER | 2 | **Both fixed** in PR #21. |
-| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 split: urllib3 fixed in PR #21; cryptography deferred. M-4, M-5 deferred. |
+| 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 fully closed (urllib3 fixed in PR #21; cryptography dropped by PR #38 openai bump). M-4 closed (boot-time warning). M-5 partially mitigated (launch-args). |
 | 🟢 MINOR  | 9 | N-1, N-2 closed in follow-up docs PR. N-3 resolved via B-2 fix. N-4..N-9 deferred. |
 
 The container deploy via Render → Docker → `requirements.txt` was broken today: `requirements.txt` was missing 4 of the 11 declared runtime dependencies, including two (`structlog`, `flask-limiter`) imported at module level in `app.py`. `import app` raised `ModuleNotFoundError` before gunicorn could bind, so the service would fail health-check before serving a single request. The second BLOCKER (no `.env.example`) meant operators had no reference for the 24 env vars the app reads, including `OPENAI_API_KEY` — which fails silently per-request, not at boot.
@@ -74,9 +74,9 @@ BOOT OK — 10 routes
 | B-2 | 🔴 BLOCKER | No `.env.example`; `OPENAI_API_KEY` undocumented and fails per-request | `personalize/openai_client.py:80`, `render.yaml:6-8` | **FIXED** in this PR |
 | ~~M-1~~ | 🟡 MAJOR  | `CLAUDE.md` "Known issues" stale (claims 7 P2 items remain, actually 0) | `CLAUDE.md:109-117`, `docs/AUDIT.md` (all P2-1..P2-12 struck-through) | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — CLAUDE.md "Known issues" rewritten to reflect all P2 closed + pre-deploy-audit summary |
 | ~~M-2~~ | 🟡 MAJOR  | `WORKFLOW.md` claims Stages 1, 3, 6 aspirational — all shipped | `docs/WORKFLOW.md:6-9` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — status banner updated to "all 6 stages shipped 2026-04-27" |
-| M-3 | 🟡 MAJOR  | Transitive CVEs: `urllib3 2.6.2` (CVE-2026-21441) bumped to 2.7.0 in this PR; `cryptography v41.0.7` (6 CVEs) still pending | OSV scanner (CodeRabbit), `pip-audit` output | urllib3 **FIXED** in this PR; cryptography DEFERRED |
-| M-4 | 🟡 MAJOR  | `RATE_LIMIT_STORAGE_URI=memory://` default; per-worker buckets if `--workers >1` | `app.py:237`, `entrypoint.sh:15` | DEFERRED |
-| M-5 | 🟡 MAJOR  | Playwright 1.57 launches Chrome for Testing instead of Chromium — memory regression on 512 MB tier | [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489), `pyproject.toml:14`, `entrypoint.sh:9-12` | DEFERRED |
+| M-3 | 🟡 MAJOR  | Transitive CVEs: `urllib3 2.6.2` (CVE-2026-21441); `cryptography v41.0.7` (6 CVEs) | OSV scanner (CodeRabbit), `pip-audit` output | **CLOSED**: urllib3 fixed in PR #21; cryptography dropped from deps by PR #38 openai bump. `pip-audit -r requirements.txt` reports 0 vulns as of 2026-05-25 |
+| M-4 | 🟡 MAJOR  | `RATE_LIMIT_STORAGE_URI=memory://` default; per-worker buckets if `--workers >1` | `app.py:237`, `entrypoint.sh:15` | **CLOSED** — boot-time warning + WEB_CONCURRENCY env propagation |
+| M-5 | 🟡 MAJOR  | Playwright 1.57 launches Chrome for Testing instead of Chromium — memory regression on 512 MB tier | [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489), `pyproject.toml:14`, `entrypoint.sh:9-12` | **PARTIAL** — launch-args mitigation landed; final memory-tier decision still deferred until first prod-OOM signal |
 | ~~N-1~~ | 🟢 MINOR  | `CLAUDE.md` claims "52 tests" — actual 210 | `CLAUDE.md:70`, `pytest -q` output | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — line updated to "210 passed + 2 skipped, ~3s" |
 | ~~N-2~~ | 🟢 MINOR  | "$0.32 per run" cost claim unverified | `docs/PERSONALIZATION.md`, `docs/HANDOFF.md`, `CLAUDE.md:167` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — annotated with 2026-04-27 live measurement (~$0.05/run text-only; $0.32 forecast assumes 3 images) |
 | N-3 | 🟢 MINOR  | 20+ `KCD_*` env vars undocumented for operators | `kratos_clone/capture.py:185-228` | **RESOLVED via B-2 fix** |
@@ -145,33 +145,40 @@ This file is now a build artifact — regenerable from `uv.lock` whenever deps c
 
 ### M-3 — Transitive CVEs (urllib3 FIXED, cryptography DEFERRED)
 
-**urllib3 — FIXED in this PR.** CodeRabbit's OSV scanner flagged `urllib3==2.6.2` (CVE-2026-21441 / GHSA-38jv-5279-wg99): HIGH-severity decompression-bomb when following HTTP redirects with `preload_content=False`. Pulled transitively by `requests`. The exposed call site is `kratos_clone/capture.py` (visits user-supplied URLs); a malicious redirect target could exploit this. Bumped via `uv lock --upgrade-package urllib3` to **2.7.0**, requirements.txt re-exported (commit 67ad8ce). Verified post-bump: pytest 210/2 skipped, mypy 21 src OK, app boots with all 10 routes.
+**urllib3 — FIXED in PR #21.** CodeRabbit's OSV scanner flagged `urllib3==2.6.2` (CVE-2026-21441 / GHSA-38jv-5279-wg99): HIGH-severity decompression-bomb when following HTTP redirects with `preload_content=False`. Pulled transitively by `requests`. The exposed call site is `kratos_clone/capture.py` (visits user-supplied URLs); a malicious redirect target could exploit this. Bumped to **2.7.0** in PR #21 (uv.lock); the requirements.txt re-export landed later in PR #38 (lock/requirements drift sync, 2026-05-25). Verified post-bump: pytest green, mypy 21 src OK, app boots with all 10 routes.
 
-**cryptography — still DEFERRED.** `pip-audit --vulnerability-service osv` reports 6 CVEs in cryptography 41.0.7 (PYSEC-2024-225, CVE-2023-50782, CVE-2024-0727, GHSA-h4gh-qq45-vh27, CVE-2026-26007, CVE-2026-34073). Pulled transitively by `openai`. Soft-gated in CI (`pip-audit … || true`). No immediate exploit path — cryptography is used by openai for TLS/JWT, all interactions with api.openai.com (trusted). Bumping it requires re-resolution of openai's transitive tree (likely pulls a newer openai SDK), so a dedicated bump-PR with full CI re-run is the safer path.
+**cryptography — RESOLVED transitively, no action needed.** The PR #38 dependency-group bump (`openai 2.32 → 2.38`) dropped `cryptography` + `pyjwt` from the transitive closure entirely — neither package appears in current `requirements.txt` or `uv.lock`. `pip-audit -r requirements.txt --vulnerability-service pypi` reports **0 known vulnerabilities** against main as of 2026-05-25. The 6 CVEs previously deferred (PYSEC-2024-225, CVE-2023-50782, CVE-2024-0727, GHSA-h4gh-qq45-vh27, CVE-2026-26007, CVE-2026-34073) are no longer exploitable because the vulnerable package is no longer present.
 
-**Recommended follow-up:** `uv lock --upgrade-package cryptography` + re-export, in its own PR.
+### M-4 — In-memory rate-limit storage (CLOSED)
 
-### M-4 — In-memory rate-limit storage (DEFERRED)
+`RATE_LIMIT_STORAGE_URI` defaults to `memory://` (`app.py`). With Flask-Limiter's in-memory backend, each gunicorn worker has its own bucket — N workers means rate limits are silently multiplied by N.
 
-`RATE_LIMIT_STORAGE_URI` defaults to `memory://` (`app.py:237`). With Flask-Limiter's in-memory backend, each gunicorn worker has its own bucket — N workers means rate limits are silently multiplied by N.
+**Resolution (2026-05-25, hardened 2026-05-30):** `app.py::_warn_if_rate_limit_misconfigured` logs a structured `rate_limit_storage_misconfigured` warning at boot when `WEB_CONCURRENCY > 1` and the storage URI starts with `memory://` OR `async+memory://` (both share the per-process bucket problem). The warning includes `workers`, `storage_uri`, a one-line `reason`, and an actionable `fix`. `WEB_CONCURRENCY` is parsed defensively — non-numeric (`auto`), 0, negative, or empty-string values fall back to 1 with a `web_concurrency_parse_failed` log (empty string is silent, treated as unset). `entrypoint.sh` propagates `WEB_CONCURRENCY` and pre-validates it as a positive integer in bash, so gunicorn's CLI parser gets a known-good value instead of failing cryptically. Tests: `tests/test_app_boot.py` (9 cases covering the matrix above).
 
-**Mitigation today:** `entrypoint.sh:15` hardcodes `--workers 1`. The mismatch is invisible; if a future ops change scales workers without setting a Redis URI, rate limits degrade silently.
+**Known gaps in M-4 scope (future hardening, lower priority):**
+- `GUNICORN_CMD_ARGS="--workers N"` can override the entrypoint-set `--workers` invisibly to Python; the Python warning reads `WEB_CONCURRENCY` only and won't fire. Documented in `entrypoint.sh` comment block; no code fix possible without a gunicorn server hook.
+- `redis://` pointing at an unreachable host degrades silently (Flask-Limiter falls back to no-op rate limiting). Not caught by this check — a "storage health probe" is a separate, larger piece of work.
+- `RATE_LIMIT_STORAGE_URI=""` (set-but-empty) is passed to limiter.init_app as the empty string; Flask-Limiter behavior in this case is implementation-defined and not covered here.
 
-**Recommended follow-up:** add an assertion in `app.py` boot path that if `--workers` env var (`GUNICORN_WORKERS` or detected from `psutil`) is >1 and `RATE_LIMIT_STORAGE_URI` is `memory://`, log a warning. Or document the constraint in `entrypoint.sh` as a comment block. Lower priority: depends on whether multi-worker is a near-term goal.
-
-### M-5 — Playwright 1.57 Chrome-for-Testing memory regression (DEFERRED)
+### M-5 — Playwright 1.57 Chrome-for-Testing memory regression (PARTIAL)
 
 [microsoft/playwright#38489](https://github.com/microsoft/playwright/issues/38489): v1.57+ launches Chrome for Testing instead of lightweight open-source Chromium. Reported memory under load up to 20 GB per instance. Render free tier is 512 MB.
 
-**Mitigation today:** `--workers 1` (already in `entrypoint.sh`). Each download spawns Chromium synchronously, holds it in RAM during scroll, releases on context.close(). Single-worker means at most one Chromium at a time.
+**Investigation (2026-05-25):** Confirmed on this branch: `playwright==1.60.0` and `pw.chromium.executable_path` resolves to `chromium-1223/chrome-linux64/chrome` — the post-1.57 Chrome-for-Testing build (legacy chromium had build IDs below ~1130). The Python `launch()` API does **not** accept `headless='shell'` (only `bool`), so the JS-only "headless shell" trick isn't a direct switch from Python — pointing at the lightweight `chromium_headless_shell` binary requires explicit `executable_path=`.
 
-**Risk:** even single-instance Chrome for Testing may exceed 512 MB on heavy SPAs (Lenis + WebGL + Spline). First OOM observed in prod log = trigger for action.
+**Mitigation now (landed):**
+1. `--workers 1` in `entrypoint.sh` — at most one Chromium at a time
+2. `DEFAULT_CHROMIUM_LAUNCH_ARGS` constant in `kratos_clone/capture.py` (passed to every `pw.chromium.launch()`): disables dev-shm, GPU, extensions, background networking, sync, translate, default apps, and various auto-update probes. These flags shrink CfT's working set vs. the all-default launch the module used pre-#39-follow-up. **Sandbox stays ON** — the module visits user-supplied URLs and `--no-sandbox` would be a security regression. Operators on hardened containers (no seccomp, sandbox launch fails) can opt-in via `KCD_LAUNCH_ARGS` env var (replaces defaults; comma-separated). See `tests/test_capture_helpers.py::test_launch_args_*`.
 
-**Recommended follow-up:** investigation issue. Memory-profile a representative capture inside a 512 MB-constrained container. Options if it's tight:
-- Set `--ipc=host` in entrypoint.sh (Playwright Docker recommendation)
-- Pin to playwright<1.57 (downgrade — opens compat questions)
-- Migrate to ARM64 (Render premium tiers; ARM still uses Chromium per upstream)
+**Risk remaining:** even with reduced flags, CfT is heavier than legacy chromium. First OOM observed in prod log = trigger for one of the harder options below.
+
+**Recommended follow-up (deferred until first OOM signal):**
+- Set `--ipc=host` in `entrypoint.sh` (Playwright Docker recommendation)
+- Repoint `executable_path` to `chromium_headless_shell-NNNN/...` via a `KCD_USE_HEADLESS_SHELL=1` knob (smaller binary; requires `playwright install chromium-headless-shell`)
+- Pin to playwright<1.57 (downgrade — opens compat questions; Patches A–E were validated against 1.57+ async API)
 - Upgrade Render tier above 512 MB
+
+**Why this stopped at "partial" rather than full closure:** the local sandbox here can't run a representative capture inside a 512 MB cgroup, so the actual peak-RSS measurement that would justify a deeper mitigation (ipc=host vs. tier upgrade vs. headless-shell switch) can't be produced without docker-in-docker + a heavy-SPA target page. Re-open when prod telemetry surfaces an OOM.
 
 ### N-2 — "$0.32 per run" cost claim (DEFERRED)
 
@@ -234,7 +241,7 @@ All gates run on `chore/pre-deploy-audit-2026-05-10` after the fix:
 | pytest | `uv run pytest -q` | ✅ 210 passed, 2 skipped | Live OpenAI tests gated; verified post-urllib3-bump |
 | bandit (CI scope) | `uv run bandit -r personalize/ kratos_clone/ scripts/ app.py --severity-level medium` | ✅ Medium: 0, High: 0 | CI gate scope per `ci.yml` |
 | bandit (incl. downloader.py) | `uv run bandit -r personalize/ kratos_clone/ scripts/ app.py downloader.py --severity-level medium` | ⚠️ Medium: 0, High: 1 | N-9 — md5 filename hashing in `downloader.py:87`; non-security |
-| pip-audit | `uv run pip-audit --vulnerability-service osv --desc on` | ⚠️ Soft — cryptography 41.0.7 transitives remain | M-3 cryptography portion deferred |
+| pip-audit | `uv run pip-audit -r requirements.txt --vulnerability-service pypi` | ✅ 0 known vulnerabilities (re-verified 2026-05-25 post-PR-#38) | M-3 fully closed |
 
 ---
 
@@ -259,8 +266,8 @@ If `/api/personalize/structure` returns 5xx → check `OPENAI_API_KEY` in Render
 
 1. **Doc refresh PR** — M-1 + M-2 + N-1 + N-2. ~30 min. Single-author doc edits.
 2. **Dockerfile hardening PR** — N-6 + N-7 (+ optionally N-8). ~30 min. Add HEALTHCHECK + USER.
-3. **Cryptography bump PR** — M-3 (urllib3 already done in this PR). `uv lock --upgrade-package cryptography` + regen requirements.txt. Verify CI green.
+3. ~~Cryptography bump PR — M-3.~~ Closed transitively by PR #38 (`openai 2.32 → 2.38` dropped both `cryptography` and `pyjwt` from the closure). No action required.
 4. **Memory investigation issue** — M-5. Profile a heavy-SPA capture under 512 MB constraint. Outcomes: keep current setup, set `--ipc=host`, or upgrade tier.
-5. **Rate-limit guard** — M-4. Add boot-time warning if `--workers >1` and storage is `memory://`.
+5. ~~Rate-limit guard — M-4.~~ Landed: `app.py::_warn_if_rate_limit_misconfigured` logs `rate_limit_storage_misconfigured` at boot when `WEB_CONCURRENCY > 1` and storage is `memory://`.
 
 Each is independent and small. None blocks deploy.

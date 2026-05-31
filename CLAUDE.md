@@ -42,7 +42,7 @@ uv run python -m kratos_clone <url> --output-dir ./capture
 # Knobs: --passes {1,2,3} --viewport WxH --headed --no-styles --no-shadow --no-io-polyfill
 # Env vars: KCD_VIEWPORT_WIDTH, KCD_NAV_TIMEOUT, KCD_DOM_STABLE_MS, KCD_SCROLL_PASSES,
 #           KCD_HEADED, KCD_CAPTURE_COMPUTED_STYLES, KCD_IO_POLYFILL, KCD_SHADOW_WALKER,
-#           KCD_BLOCK_ANALYTICS, LOG_LEVEL, LOG_FORMAT
+#           KCD_BLOCK_ANALYTICS, KCD_LAUNCH_ARGS, LOG_LEVEL, LOG_FORMAT
 ```
 
 ### Generate a design system from a capture
@@ -68,7 +68,7 @@ uv run ruff format --check kratos_clone/ scripts/ app.py
 
 ### Tests
 ```bash
-uv run pytest -q                    # 266 passed + 2 skipped, ~2s (live OpenAI gated)
+uv run pytest -q                    # 288 passed + 2 skipped, ~2s (live OpenAI gated)
 uv run pytest tests/test_post.py -v # specific file
 ```
 
@@ -127,9 +127,14 @@ gh run list --limit 5
 >
 > A second pre-deploy audit ran 2026-05-10 (`docs/PRE_DEPLOY_AUDIT_2026-05-10.md`)
 > with separate severity scale: both BLOCKERs fixed in PR #21 + the urllib3
-> CVE within M-3 also bumped there. Remaining: 3 MAJOR + 6 MINOR
-> deferred (cryptography 41 bump, in-memory rate-limit storage,
-> Playwright 1.57 memory regression, Dockerfile hardening, etc.).
+> CVE within M-3 also bumped there. M-3 cryptography portion closed
+> transitively by PR #38 (openai 2.32 → 2.38 dropped cryptography from the
+> dep closure; `pip-audit -r requirements.txt` reports 0 vulns). M-4
+> closed by boot-time `rate_limit_storage_misconfigured` warning + WEB_CONCURRENCY
+> propagation in entrypoint.sh. M-5 Playwright Chrome-for-Testing partially
+> mitigated by launch-arg constant in `kratos_clone/capture.py` (CfT
+> memory-reduction flags; sandbox stays on). Remaining: 6 MINOR deferred
+> (Dockerfile hardening, CORS allow-list, etc.).
 
 ---
 

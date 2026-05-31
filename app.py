@@ -253,10 +253,8 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
         os.makedirs(DOWNLOAD_FOLDER)
     # Bind limiter storage now (memory:// would otherwise spawn an
     # expiration thread at module-import time and trip the smoke test).
-    app.config.setdefault(
-        "RATELIMIT_STORAGE_URI",
-        os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"),
-    )
+    storage_uri = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
+    app.config.setdefault("RATELIMIT_STORAGE_URI", storage_uri)
     limiter.init_app(app)
     # `os.getenv` returns "" for set-but-empty; `or "1"` collapses that AND
     # None (unset) to the same default. int() on a positive-string-stripped
@@ -271,10 +269,7 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
         # or to 0/negative. Don't let an observability check abort startup.
         logger.warning("web_concurrency_parse_failed", provided=workers_raw, fallback=1)
         workers = 1
-    _warn_if_rate_limit_misconfigured(
-        storage_uri=app.config.get("RATELIMIT_STORAGE_URI", "memory://"),
-        workers=workers,
-    )
+    _warn_if_rate_limit_misconfigured(storage_uri=storage_uri, workers=workers)
     # R2-PRC008 (approved 2026-05-30): build at app-construction time so the test
     # factory + monkeypatch.setenv picks up overrides without importlib.reload.
     max_renders_raw = os.getenv("KCD_MAX_CONCURRENT_RENDERS", "2")

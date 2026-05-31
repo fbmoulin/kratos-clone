@@ -7,7 +7,15 @@ the WCAG contrast formula used in the design-system Accessibility section.
 
 from __future__ import annotations
 
-from kratos_clone.capture import asset_filename, hash_url
+import os
+from unittest.mock import patch
+
+from kratos_clone.capture import (
+    DEFAULT_CHROMIUM_LAUNCH_ARGS,
+    CaptureConfig,
+    asset_filename,
+    hash_url,
+)
 
 # ── hash_url ─────────────────────────────────────────────────────────────────
 
@@ -212,3 +220,43 @@ def test_contrast_ratio_passes_aa_for_body_text():
     """
     ratio = _contrast_ratio("#d4d4d4", "#0a0a0a")
     assert ratio >= 4.5  # passes AA body text
+
+
+# ── launch_args / M-5 mitigation ─────────────────────────────────────────────
+
+
+def test_launch_args_default_includes_docker_shm_flag():
+    """M-5: --disable-dev-shm-usage MUST be in defaults (Docker shm fix)."""
+    assert "--disable-dev-shm-usage" in DEFAULT_CHROMIUM_LAUNCH_ARGS
+
+
+def test_launch_args_default_does_not_disable_sandbox():
+    """Sandbox MUST stay on by default — we visit user-supplied URLs.
+
+    --no-sandbox / --disable-setuid-sandbox are security regressions; allow
+    operators to opt-in via KCD_LAUNCH_ARGS but never default to off.
+    """
+    assert "--no-sandbox" not in DEFAULT_CHROMIUM_LAUNCH_ARGS
+    assert "--disable-setuid-sandbox" not in DEFAULT_CHROMIUM_LAUNCH_ARGS
+
+
+def test_capture_config_uses_default_launch_args_when_env_unset():
+    """No KCD_LAUNCH_ARGS → CaptureConfig.launch_args == defaults."""
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("KCD_LAUNCH_ARGS", None)
+        cfg = CaptureConfig()
+    assert cfg.launch_args == DEFAULT_CHROMIUM_LAUNCH_ARGS
+
+
+def test_capture_config_overrides_launch_args_from_env():
+    """KCD_LAUNCH_ARGS replaces defaults (comma-separated)."""
+    with patch.dict(os.environ, {"KCD_LAUNCH_ARGS": "--foo,--bar=baz, --qux "}):
+        cfg = CaptureConfig()
+    assert cfg.launch_args == ("--foo", "--bar=baz", "--qux")
+
+
+def test_capture_config_empty_env_collapses_to_no_args():
+    """KCD_LAUNCH_ARGS='' → empty tuple (operator wants zero args)."""
+    with patch.dict(os.environ, {"KCD_LAUNCH_ARGS": ""}):
+        cfg = CaptureConfig()
+    assert cfg.launch_args == ()
