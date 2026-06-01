@@ -36,3 +36,4 @@ capture/
 
 # Static server background output
 *.log
+.superpowers/

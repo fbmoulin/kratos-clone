@@ -162,6 +162,28 @@ UX audit on both Flask templates identified 7 a11y categories + 9 user-experienc
 
 ---
 
+## Phase 9 — Personalize preview modal 🔄 IN DESIGN (2026-05-16)
+
+Visual preview of personalize output (today operator sees only `Saída: <path>`
+text). Modal with 3 tabs (Inspecionar iframe / Thumb screenshot / Antes-Depois
+split). Spec finalized via brainstorming + plan-review-cycle (2 review rounds,
+12 findings dispositioned). Implementation deferred to next session.
+
+| Component | Status |
+|-----------|--------|
+| Brainstorm + design | ✅ user-approved |
+| Spec doc + Plan Review Log | ✅ committed (`abbc741`) |
+| Round 1 review | ✅ 10/10 findings closed |
+| Round 2 review | 🔄 2 Critical closed; 2 Major + 5 Minor + 1 Advisory open |
+| Validator green | ⏳ pending R2 closure |
+| writing-plans → tasked plan | ⏳ pending validator |
+| Code shipped | ⏳ pending plan execution |
+
+**Spec**: `docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`
+**Branch**: `feat/personalize-preview-modal`
+
+---
+
 ## Phase 8 — Visual rebrand ✅ SHIPPED 2026-05-16
 
 Full rebrand from generic "Website Downloader" to **"Kratos Clone — Website Downloader"** identity. Industrial-luxe aesthetic: dark heavy + vivid orange forge accent. Followed dev-workflow Alta complexity (spec at `docs/superpowers/specs/2026-05-16-ui-rebrand-orange-radial.md`); design by `frontend-design` skill + `ui-ux-designer` agent.

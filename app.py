@@ -270,6 +270,19 @@ def create_app(start_janitor: bool = True, run_boot_cleanup: bool = True) -> Fla
         logger.warning("web_concurrency_parse_failed", provided=workers_raw, fallback=1)
         workers = 1
     _warn_if_rate_limit_misconfigured(storage_uri=storage_uri, workers=workers)
+    # R2-PRC008 (approved 2026-05-30): build at app-construction time so the test
+    # factory + monkeypatch.setenv picks up overrides without importlib.reload.
+    max_renders_raw = os.getenv("KCD_MAX_CONCURRENT_RENDERS", "2")
+    try:
+        max_renders = max(1, int(max_renders_raw))
+    except ValueError:
+        logger.warning(
+            "render_capacity_defaulted",
+            configured_value=max_renders_raw,
+            fallback=2,
+        )
+        max_renders = 2
+    app.config["RENDER_SEMAPHORE"] = threading.Semaphore(max_renders)
     if run_boot_cleanup:
         cleanup_downloads_folder()
     if start_janitor:
@@ -688,18 +701,19 @@ def personalize_run() -> tuple[Response, int]:
     if len(logo_bytes) > _PERSONALIZE_LOGO_MAX_BYTES:
         return jsonify({"error": "logo exceeds 2 MiB cap"}), 413
 
-    # Confine html_dir to DOWNLOAD_FOLDER to prevent traversal.
-    html_dir = os.path.realpath(os.path.join(DOWNLOAD_FOLDER, html_dir_str))
-    base = os.path.realpath(DOWNLOAD_FOLDER)
-    if not html_dir.startswith(base + os.sep) and html_dir != base:
-        return jsonify({"error": "html_dir must be inside downloads/"}), 400
+    # R1-PRC007: confine html_dir to DOWNLOAD_FOLDER via the shared validator
+    # (single source of truth for path security; rejects the bare downloads root,
+    # which has no index.html to personalize anyway).
+    dir_path = _validate_html_dir(html_dir_str)
+    if dir_path is None:
+        return jsonify({"error": "html_dir invalid or outside downloads/"}), 400
 
     from personalize.openai_client import BudgetExceededError
     from personalize.pipeline import run_pipeline
 
     try:
         out_path = run_pipeline(
-            Path(html_dir),
+            Path(dir_path),
             raw_brief="",  # not used when override provided
             logo_bytes=logo_bytes,
             structured_brief_override=brief,
@@ -715,7 +729,243 @@ def personalize_run() -> tuple[Response, int]:
         logger.error("personalize_run_failed", error=str(exc))
         return jsonify({"error": "pipeline failed"}), 502
 
-    return jsonify({"output_path": str(out_path) if out_path else None}), 200
+    import glob
+
+    # R2-PRC006 (approved 2026-05-30): clear stale preview screenshots only AFTER a
+    # successful re-personalize, so a pipeline failure never leaves a previous run's
+    # screenshot to be served as if current. Best-effort; next render replaces atomically.
+    for stale in glob.glob(os.path.join(dir_path, "preview-*.png")):
+        with contextlib.suppress(OSError):
+            os.unlink(stale)
+
+    return (
+        jsonify({"output_path": str(out_path) if out_path else None, "html_dir": html_dir_str}),
+        200,
+    )
+
+
+def _validate_html_dir(html_dir_str: str) -> str | None:
+    """Resolve html_dir_str to an absolute path confined to DOWNLOAD_FOLDER.
+
+    Single source of truth for path security policy. Returns realpath if safe,
+    None if rejected. Rejections: empty/whitespace/"."/"./" ; absolute paths or
+    traversal escaping DOWNLOAD_FOLDER ; symlinks pointing outside DOWNLOAD_FOLDER ;
+    multi-segment or parent-traversal inputs (preview/screenshot routes require
+    single-name directory).
+    """
+    if not html_dir_str or html_dir_str.strip() in ("", ".", "./"):
+        return None
+    # Reject multi-segment inputs before resolving. Preview/screenshot routes
+    # accept single path segments only; "foo/../bar" normalizes inside
+    # DOWNLOAD_FOLDER but breaks the single-segment routing contract.
+    if os.sep in html_dir_str or "/" in html_dir_str or "\\" in html_dir_str:
+        return None
+    # Reject parent-traversal attempts (e.g., ".."). os.path.normpath collapses
+    # ".." but we want to reject it outright at the input layer.
+    normalized = os.path.normpath(html_dir_str)
+    if ".." in normalized or len(normalized.split(os.sep)) > 1:
+        return None
+    target = os.path.realpath(os.path.join(DOWNLOAD_FOLDER, html_dir_str))
+    base = os.path.realpath(DOWNLOAD_FOLDER)
+    if target == base:
+        return None
+    if not target.startswith(base + os.sep):
+        return None
+    return target
+
+
+_PREVIEW_ALLOWED_EXTS = frozenset(
+    {
+        ".html",
+        ".css",
+        ".js",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".svg",
+        ".webp",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".ico",
+        ".json",
+        ".mp3",
+        ".mp4",
+        ".webm",
+    }
+)
+
+
+@app.route("/personalize/preview/<html_dir>/<path:asset_path>", methods=["GET"])
+def personalize_preview(html_dir: str, asset_path: str) -> Response | tuple[str, int]:
+    """Serve a file from inside downloads/<html_dir>/ for iframe rendering.
+
+    Security layers (defense in depth):
+    1. Routing rejects html_dir containing "/" (default <string:> converter).
+    2. Extension allowlist (defends double-extension bypass).
+    3. realpath confinement via _validate_html_dir (../, absolute paths).
+    4. send_from_directory native path-traversal protection on asset_path.
+    """
+    from flask import send_from_directory
+    from werkzeug.exceptions import NotFound
+
+    ext = os.path.splitext(asset_path)[1].lower()
+    if ext not in _PREVIEW_ALLOWED_EXTS:
+        return (f"Extension {ext!r} not allowed", 400)
+    dir_path = _validate_html_dir(html_dir)
+    if dir_path is None:
+        return ("html_dir invalid or outside downloads/", 400)
+    if not os.path.isdir(dir_path):
+        return ("Directory not found", 404)
+    try:
+        resp = send_from_directory(dir_path, asset_path, max_age=3600)
+        # Same-host CORS (not "*") so only this Flask host can read preview content
+        # cross-origin via JS — the R2-PRC002 posture.
+        # KNOWN LIMITATION (INT-1): the sandbox=allow-scripts iframe is an opaque
+        # (null) origin, so CORS-gated @font-face fetches send Origin: null, which
+        # does NOT match this host header — self-hosted webfonts fall back to system
+        # fonts in the Inspecionar tab. Accepted (cosmetic, single-operator); not
+        # widened to "*" because that re-opens what R2-PRC002 closed. Non-CORS
+        # subresources (img/css/script tags) load fine regardless of this header.
+        origin = request.host_url.rstrip("/")
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+        # R2-PRC004 (content-type-aware, approved 2026-05-30): the SVG-as-document
+        # inline-<script> XSS vector only applies to .svg served as a document, so
+        # the strict CSP is scoped to .svg ONLY. HTML documents must render with
+        # full fidelity inside the allow-scripts iframe (R1-PRC006: captured SPA JS
+        # must run; their relative CSS/images must load). The sandbox attribute
+        # already isolates HTML; in-iframe-phishing residual is accepted per the
+        # trust model. nosniff is cheap defense applied to every response.
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        if ext == ".svg":
+            resp.headers["Content-Security-Policy"] = (
+                "default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; sandbox"
+            )
+        # Top-level HTML navigation sandboxing: when index.html is opened directly
+        # (not in an iframe), disable scripts/same-origin to prevent first-party
+        # execution. Sec-Fetch-Dest != "iframe" indicates a top-level navigation.
+        # Inside the modal's sandboxed iframe (Sec-Fetch-Dest == "iframe"), keep
+        # the relaxed policy so SPA scripts run.
+        elif ext == ".html" and "/personalize/preview/" in request.path:
+            basename = os.path.basename(asset_path)
+            if basename == "index.html":
+                fetch_dest = request.headers.get("Sec-Fetch-Dest")
+                if fetch_dest != "iframe":
+                    resp.headers["Content-Security-Policy"] = (
+                        "sandbox; default-src 'none'; style-src 'unsafe-inline';"
+                    )
+        return resp
+    except (FileNotFoundError, NotFound):
+        return ("Not found", 404)
+
+
+class RenderCapacityExhausted(Exception):
+    """Raised when the render semaphore acquire times out (R1-PRC004)."""
+
+
+async def _block_external(route: Any) -> None:
+    """Abort non-file:// requests during screenshot render (R1-PRC002).
+
+    Module-level so it is unit-testable without a live Playwright instance
+    (R2-PRC007).
+    """
+    if route.request.url.startswith("file:"):
+        await route.continue_()
+    else:
+        await route.abort()
+
+
+@app.route("/api/personalize/screenshot/<html_dir>", methods=["GET"])
+def personalize_screenshot(html_dir: str) -> Response | tuple[Response, int]:
+    """Generate (or fetch cached) PNG screenshot of before|after HTML.
+
+    Query: ?which=before|after. Cache: downloads/<html_dir>/preview-{before,after}.png.
+    <html_dir> uses default <string:> converter (single-segment capture dirs).
+    """
+    which = request.args.get("which")
+    if which not in ("before", "after"):
+        return jsonify({"error": "which must be 'before' or 'after'"}), 400
+    dir_path = _validate_html_dir(html_dir)
+    if dir_path is None:
+        return jsonify({"error": "html_dir invalid or outside downloads/"}), 400
+    if not os.path.isdir(dir_path):
+        return jsonify({"error": "Directory not found"}), 404
+    src_filename = "index.html" if which == "before" else "personalized.html"
+    src_path = os.path.join(dir_path, src_filename)
+    if not os.path.isfile(src_path):
+        return jsonify({"error": f"{src_filename} not found in {html_dir}"}), 404
+    cache_path = os.path.join(dir_path, f"preview-{which}.png")
+    if not os.path.isfile(cache_path):
+        try:
+            _render_html_to_png(src_path, cache_path)
+        except RenderCapacityExhausted:
+            resp = jsonify({"error": "render capacity exhausted, try again in a moment"})
+            resp.headers["Retry-After"] = "30"
+            return resp, 503
+        except Exception as exc:
+            # Mirror personalize_run/personalize_structure: log + structured error
+            # instead of leaking a bare 500 HTML page. Playwright TimeoutError on
+            # page.goto (8s) is the common trigger on heavy captures.
+            logger.error(
+                "personalize_screenshot_render_failed",
+                html_dir=html_dir,
+                which=which,
+                error=str(exc),
+            )
+            return jsonify({"error": "screenshot render failed"}), 500
+    return send_file(cache_path, mimetype="image/png")
+
+
+def _render_html_to_png(src_html_path: str, out_png_path: str) -> None:
+    """Render a local HTML file to a 1280x800 PNG via Playwright headless.
+
+    Concurrency-bounded (R1-PRC004): acquires the render semaphore with 15s timeout;
+    on timeout raises RenderCapacityExhausted. Atomic write (R1-PRC003): renders to a
+    tempfile in the SAME dir then os.replace. External requests blocked (R1-PRC002).
+    """
+    import asyncio
+    import tempfile
+
+    from flask import current_app
+    from playwright.async_api import async_playwright
+
+    semaphore = current_app.config["RENDER_SEMAPHORE"]
+    if not semaphore.acquire(timeout=15):
+        raise RenderCapacityExhausted()
+    try:
+        if os.path.isfile(out_png_path):
+            return
+        out_dir = os.path.dirname(out_png_path)
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png.tmp", dir=out_dir)
+        os.close(tmp_fd)
+        try:
+
+            async def _render() -> None:
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(headless=True)
+                    try:
+                        ctx = await browser.new_context(viewport={"width": 1280, "height": 800})
+                        page = await ctx.new_page()
+                        await page.route("**/*", _block_external)
+                        await page.goto(f"file://{src_html_path}", wait_until="load", timeout=8000)
+                        # Explicit type: the atomic-write temp file ends in
+                        # ".png.tmp", and Playwright infers format from the path
+                        # extension (".tmp" -> unsupported). Pin PNG.
+                        await page.screenshot(path=tmp_path, full_page=False, type="png")
+                    finally:
+                        await browser.close()
+
+            asyncio.run(_render())
+            os.replace(tmp_path, out_png_path)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+            raise
+    finally:
+        semaphore.release()
 
 
 if __name__ == "__main__":
