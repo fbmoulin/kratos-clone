@@ -749,9 +749,21 @@ def _validate_html_dir(html_dir_str: str) -> str | None:
 
     Single source of truth for path security policy. Returns realpath if safe,
     None if rejected. Rejections: empty/whitespace/"."/"./" ; absolute paths or
-    traversal escaping DOWNLOAD_FOLDER ; symlinks pointing outside DOWNLOAD_FOLDER.
+    traversal escaping DOWNLOAD_FOLDER ; symlinks pointing outside DOWNLOAD_FOLDER ;
+    multi-segment or parent-traversal inputs (preview/screenshot routes require
+    single-name directory).
     """
     if not html_dir_str or html_dir_str.strip() in ("", ".", "./"):
+        return None
+    # Reject multi-segment inputs before resolving. Preview/screenshot routes
+    # accept single path segments only; "foo/../bar" normalizes inside
+    # DOWNLOAD_FOLDER but breaks the single-segment routing contract.
+    if os.sep in html_dir_str or "/" in html_dir_str or "\\" in html_dir_str:
+        return None
+    # Reject parent-traversal attempts (e.g., ".."). os.path.normpath collapses
+    # ".." but we want to reject it outright at the input layer.
+    normalized = os.path.normpath(html_dir_str)
+    if ".." in normalized or len(normalized.split(os.sep)) > 1:
         return None
     target = os.path.realpath(os.path.join(DOWNLOAD_FOLDER, html_dir_str))
     base = os.path.realpath(DOWNLOAD_FOLDER)
@@ -832,6 +844,19 @@ def personalize_preview(html_dir: str, asset_path: str) -> Response | tuple[str,
             resp.headers["Content-Security-Policy"] = (
                 "default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; sandbox"
             )
+        # Top-level HTML navigation sandboxing: when index.html is opened directly
+        # (not in an iframe), disable scripts/same-origin to prevent first-party
+        # execution. Sec-Fetch-Dest != "iframe" indicates a top-level navigation.
+        # Inside the modal's sandboxed iframe (Sec-Fetch-Dest == "iframe"), keep
+        # the relaxed policy so SPA scripts run.
+        elif ext == ".html" and "/personalize/preview/" in request.path:
+            basename = os.path.basename(asset_path)
+            if basename == "index.html":
+                fetch_dest = request.headers.get("Sec-Fetch-Dest")
+                if fetch_dest != "iframe":
+                    resp.headers["Content-Security-Policy"] = (
+                        "sandbox; default-src 'none'; style-src 'unsafe-inline';"
+                    )
         return resp
     except (FileNotFoundError, NotFound):
         return ("Not found", 404)
