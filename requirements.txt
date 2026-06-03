@@ -43,7 +43,7 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via openai
-idna==3.16
+idna==3.18
     # via
     #   anyio
     #   httpx
@@ -61,7 +61,7 @@ markupsafe==3.0.3
     #   flask
     #   jinja2
     #   werkzeug
-openai==2.38.0
+openai==2.40.0
     # via 10-website-downloader
 ordered-set==4.1.0
     # via flask-limiter
