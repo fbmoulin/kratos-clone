@@ -864,6 +864,13 @@ def personalize_preview(html_dir: str, asset_path: str) -> Response | tuple[str,
                 resp.headers["Content-Security-Policy"] = (
                     "sandbox; default-src 'none'; style-src 'unsafe-inline';"
                 )
+            # CSP varies by Sec-Fetch-Dest; caches must distinguish iframe vs
+            # top-level responses. Merge with existing Vary (e.g., Origin from CORS).
+            existing_vary = resp.headers.get("Vary", "")
+            vary_values = [v.strip() for v in existing_vary.split(",") if v.strip()]
+            if "Sec-Fetch-Dest" not in vary_values:
+                vary_values.append("Sec-Fetch-Dest")
+            resp.headers["Vary"] = ", ".join(vary_values)
         return resp
     except (FileNotFoundError, NotFound):
         return ("Not found", 404)
