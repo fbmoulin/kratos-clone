@@ -1,5 +1,7 @@
-# Use official Python base image
-FROM python:3.11-slim-bookworm
+# Use official Python base image. Pinned to 3.12 to match pyproject
+# `requires-python = ">=3.12"` and the CI matrix (3.12) — prod must run the
+# same interpreter the test suite + mypy strict gate validate against.
+FROM python:3.12-slim-bookworm
 
 # Install system dependencies for Playwright
 RUN apt-get update && apt-get install -y \
