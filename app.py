@@ -844,19 +844,26 @@ def personalize_preview(html_dir: str, asset_path: str) -> Response | tuple[str,
             resp.headers["Content-Security-Policy"] = (
                 "default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; sandbox"
             )
-        # Top-level HTML navigation sandboxing: when index.html is opened directly
-        # (not in an iframe), disable scripts/same-origin to prevent first-party
-        # execution. Sec-Fetch-Dest != "iframe" indicates a top-level navigation.
-        # Inside the modal's sandboxed iframe (Sec-Fetch-Dest == "iframe"), keep
-        # the relaxed policy so SPA scripts run.
-        elif ext == ".html" and "/personalize/preview/" in request.path:
-            basename = os.path.basename(asset_path)
-            if basename == "index.html":
-                fetch_dest = request.headers.get("Sec-Fetch-Dest")
-                if fetch_dest != "iframe":
-                    resp.headers["Content-Security-Policy"] = (
-                        "sandbox; default-src 'none'; style-src 'unsafe-inline';"
-                    )
+        elif ext == ".html":
+            # Mutable artifact: index.html / personalized.html are regenerated on
+            # every personalize run. Force revalidation so a re-personalized dir
+            # never serves stale HTML from the browser cache (hashed assets keep
+            # the max_age=3600 set above). Without this the Inspecionar iframe
+            # showed the previous run's HTML for up to an hour. Review #1.
+            resp.headers["Cache-Control"] = "no-cache"
+            # Top-level HTML navigation sandboxing: when ANY captured HTML is
+            # opened directly (not in the modal iframe), disable scripts/same-
+            # origin to prevent first-party execution on the Flask origin.
+            # Sec-Fetch-Dest != "iframe" indicates a top-level navigation. The
+            # prior guard keyed on basename == "index.html", leaving
+            # personalized.html — the file the iframe actually loads — unprotected
+            # on a top-level open. Review #3. Inside the sandboxed iframe
+            # (Sec-Fetch-Dest == "iframe") keep the relaxed policy so SPA scripts
+            # run at full fidelity (R1-PRC006).
+            if request.headers.get("Sec-Fetch-Dest") != "iframe":
+                resp.headers["Content-Security-Policy"] = (
+                    "sandbox; default-src 'none'; style-src 'unsafe-inline';"
+                )
         return resp
     except (FileNotFoundError, NotFound):
         return ("Not found", 404)
@@ -950,7 +957,14 @@ def _render_html_to_png(src_html_path: str, out_png_path: str) -> None:
                         ctx = await browser.new_context(viewport={"width": 1280, "height": 800})
                         page = await ctx.new_page()
                         await page.route("**/*", _block_external)
-                        await page.goto(f"file://{src_html_path}", wait_until="load", timeout=8000)
+                        # Path.as_uri() percent-encodes the path, so capture dirs
+                        # containing spaces or '#' (which an f-string file:// URL
+                        # would mis-parse as a fragment → wrong path → 8s timeout
+                        # → 500) load correctly. src_html_path is absolute
+                        # (realpath via _validate_html_dir). Review #5.
+                        await page.goto(
+                            Path(src_html_path).as_uri(), wait_until="load", timeout=8000
+                        )
                         # Explicit type: the atomic-write temp file ends in
                         # ".png.tmp", and Playwright infers format from the path
                         # extension (".tmp" -> unsupported). Pin PNG.

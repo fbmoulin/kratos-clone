@@ -131,6 +131,36 @@ jobs:
       - name: Run pytest
         run: pytest -v tests/
 
+  render-live:
+    # Review #2: tests/test_render_live.py is the regression net for the
+    # `.png.tmp` / type="png" render bug, but it is gated on RUN_PLAYWRIGHT_LIVE
+    # and the default `pytest` job sets neither that nor a browser binary — so
+    # the net never fired in CI and the blind-spot was only nominally closed.
+    # This job installs Chromium and runs the gated test so the real render path
+    # is exercised on every PR. Kept separate so the Chromium download doesn't
+    # slow the main pytest job.
+    name: render-live (Playwright PNG regression net)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime deps + Playwright Chromium
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-asyncio playwright beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog openai pillow python-dotenv
+          python -m playwright install --with-deps chromium
+
+      - name: Run live render regression test
+        env:
+          RUN_PLAYWRIGHT_LIVE: "1"
+        run: pytest -v tests/test_render_live.py
+
   pip-audit:
     name: pip-audit (CVE scan)
     runs-on: ubuntu-latest

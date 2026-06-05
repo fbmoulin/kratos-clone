@@ -1000,7 +1000,14 @@
     function modalFocusables() {
         return Array.prototype.slice.call(previewModal.querySelectorAll(
             'button, [href], iframe, [tabindex]:not([tabindex="-1"])'
-        )).filter(function (el) { return !el.hidden && el.offsetParent !== null; });
+        )).filter(function (el) {
+            // Exclude roving-tabindex inactive tab buttons (tabIndex === -1): the
+            // `button` selector matches them unconditionally, so without this they
+            // stayed in the trap array as f[0]/f[last] while the browser skips
+            // them on Tab — breaking the wrap and letting Shift+Tab escape the
+            // modal (review #4).
+            return el.tabIndex >= 0 && !el.hidden && el.offsetParent !== null;
+        });
     }
 
     function trapFocus(e) {
