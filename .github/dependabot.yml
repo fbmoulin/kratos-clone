@@ -2,9 +2,24 @@
 # Grouped updates reduce review noise (one PR per ecosystem instead of one
 # PR per package). Security updates are a separate group so they can be
 # fast-tracked.
+#
+# Python ecosystem is "uv" (NOT "pip"). uv.lock is the source of truth and
+# requirements.txt is GENERATED from it (for the Docker/pip deploy). The "pip"
+# ecosystem edited requirements.txt line-by-line with no awareness of uv.lock
+# or of exact-pin constraints, twice producing an inconsistent pair
+# (pydantic 2.13.4 hard-pins pydantic-core==2.46.4, but pip-dependabot bumped
+# pydantic-core to 2.47.0 alone) -> `pip install -r requirements.txt`
+# ResolutionImpossible -> broken Docker build (see PR #48, #49, #51). The "uv"
+# ecosystem updates pyproject.toml + uv.lock via uv's resolver, so it stays
+# internally consistent and never touches requirements.txt.
+#
+# NOTE: dependabot's uv ecosystem does NOT regenerate requirements.txt, so a uv
+# bump leaves it stale (lock ahead). The CI "requirements.txt <-> uv.lock sync"
+# guard will flag this on the PR; refresh before merging with:
+#   uv export --format requirements-txt --no-dev --no-emit-project --no-hashes -o requirements.txt
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
