@@ -42,11 +42,20 @@ class TestPersonalizePreview:
         assert r.status_code == 200
         assert b"color:red" in r.data
 
-    def test_cache_control_header_present(self, client, tmp_capture):
-        r = client.get(f"/personalize/preview/{tmp_capture}/index.html")
+    def test_html_revalidates_no_cache(self, client, tmp_capture):
+        # Review #1: index.html / personalized.html are regenerated on each
+        # personalize run, so they must revalidate — otherwise a re-personalized
+        # dir serves stale HTML from the browser cache for up to max-age.
+        for name in ("index.html", "personalized.html"):
+            r = client.get(f"/personalize/preview/{tmp_capture}/{name}")
+            assert r.status_code == 200, name
+            assert "no-cache" in r.headers.get("Cache-Control", ""), name
+
+    def test_static_asset_still_cached(self, client, tmp_capture):
+        # Hashed/static assets keep the long cache; only mutable HTML revalidates.
+        r = client.get(f"/personalize/preview/{tmp_capture}/assets/style.css")
         assert r.status_code == 200
-        assert r.headers.get("Cache-Control")
-        assert "max-age=3600" in r.headers["Cache-Control"]
+        assert "max-age=3600" in r.headers.get("Cache-Control", "")
 
     def test_serves_svg_200(self, client, tmp_capture_with_svg):
         r = client.get(f"/personalize/preview/{tmp_capture_with_svg}/logo.svg")
@@ -91,13 +100,30 @@ class TestPersonalizePreview:
 
     # --- CSP cases (R2-PRC004: content-type-aware, SVG-only) --------------
 
-    def test_html_preview_has_no_restrictive_csp(self, client, tmp_capture):
-        # HTML must render full-fidelity in the allow-scripts iframe (R1-PRC006):
-        # no script-blocking CSP on HTML documents.
-        r = client.get(f"/personalize/preview/{tmp_capture}/index.html")
-        assert r.status_code == 200
-        assert "script-src 'none'" not in r.headers.get("Content-Security-Policy", "")
-        assert r.headers.get("X-Content-Type-Options") == "nosniff"
+    def test_html_in_iframe_has_relaxed_csp(self, client, tmp_capture):
+        # Inside the modal's sandboxed iframe (Sec-Fetch-Dest: iframe), captured
+        # SPA JS must run full-fidelity (R1-PRC006) — so NO locking CSP. Covers
+        # personalized.html, the file the iframe actually loads.
+        for name in ("index.html", "personalized.html"):
+            r = client.get(
+                f"/personalize/preview/{tmp_capture}/{name}",
+                headers={"Sec-Fetch-Dest": "iframe"},
+            )
+            assert r.status_code == 200, name
+            assert "default-src 'none'" not in r.headers.get("Content-Security-Policy", ""), name
+            assert r.headers.get("X-Content-Type-Options") == "nosniff"
+
+    def test_html_top_level_open_has_restrictive_csp(self, client, tmp_capture):
+        # Review #3: a top-level navigation (Sec-Fetch-Dest != "iframe") to ANY
+        # captured HTML — including personalized.html, which the prior
+        # index.html-only guard left unprotected — gets a locked-down CSP so
+        # first-party scripts can't execute on the Flask origin.
+        for name in ("index.html", "personalized.html"):
+            r = client.get(f"/personalize/preview/{tmp_capture}/{name}")
+            assert r.status_code == 200, name
+            csp = r.headers.get("Content-Security-Policy", "")
+            assert "default-src 'none'" in csp, name
+            assert "sandbox" in csp, name
 
     def test_svg_preview_has_strict_csp(self, client, tmp_capture_with_svg):
         # SVG served as a document gets script-src 'none' to kill the
