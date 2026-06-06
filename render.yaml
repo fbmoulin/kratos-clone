@@ -6,3 +6,9 @@ services:
     envVars:
       - key: PORT
         value: 8080
+      # Serialize headless-Chromium screenshot renders (preview modal). Each
+      # render peaks ~150-300 MB; the app default is 2 (~600 MB peak), which
+      # OOM-kills a 512 MB instance (Render Free/Starter). 1 keeps peak ~300 MB.
+      # Raise/remove on a >=1 GB tier (Standard+). Read at boot in create_app().
+      - key: KCD_MAX_CONCURRENT_RENDERS
+        value: "1"
