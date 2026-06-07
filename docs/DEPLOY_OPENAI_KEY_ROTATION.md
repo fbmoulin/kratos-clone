@@ -89,7 +89,7 @@ The repo's local `.env` (gitignored, `chmod 600`) also held the old key — used
 for local dev and the live integration tests (`RUN_OPENAI_LIVE=1`).
 
 ```bash
-cd /home/fbmoulin/Website-Downloader
+cd <repo-root>
 # Edit the OPENAI_API_KEY line to the new value (use your editor):
 $EDITOR .env
 # Re-confirm perms + that it is NOT tracked by git:
