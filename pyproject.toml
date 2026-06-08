@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "beautifulsoup4>=4.14.3",
+    "beautifulsoup4>=4.15.0",
     "flask>=3.1.2",
     "flask-limiter>=4.0.0",
     "gunicorn>=22.0.0",                 # CVE-2024-1135 (HTTP request smuggling) fixed in 22.0.0
