@@ -18,11 +18,22 @@ envelhecem sozinhos. Trate cada um como pista datada, não como fato:
   gh pr list -R fbmoulin/kratos-clone
   cd ~/Website-Downloader && uv sync --locked --group dev && uv run --frozen pytest -q
 
-Estado medido em 2026-08-02: main em 6cf6cb6, árvore limpa (só AGENTS.md untracked),
+Estado medido em 2026-08-02 ~07:00: main em bf85066, árvore limpa (só AGENTS.md untracked),
 358 passed / 3 skipped, mypy strict limpo, CI 9/9 verde, pip-audit sem vulnerabilidades,
-0 alertas do dependabot, ZERO PRs abertos.
+0 alertas do dependabot, 3 PRs abertos (#73, #74, #75 — dependabot, abertos 09:55 UTC).
 
-▶ NADA ESTÁ BLOQUEANDO neste repo. O trabalho de CI terminou e está mergeado.
+🔴 PRIMEIRO DE TUDO: NÃO MERGEIE O #73 COMO ESTÁ. Ele muda 1 arquivo, +1/-1 (parece
+inofensivo) e quebraria o build do Docker: sobe pydantic-core para 2.47.0 no
+requirements.txt sem tocar o uv.lock, mas o pydantic 2.13.4 declara pydantic-core==2.46.4
+como pin EXATO — as duas linhas são insatisfazíveis e `pip install -r` dá
+ResolutionImpossible. É o bug que quebrou os PRs #48/#49/#51 e motivou aposentar o
+ecossistema pip; voltou pelo ecossistema uv. A guarda requirements.txt ⇄ uv.lock PEGOU
+(os outros 8 jobs passam). Saídas: fechar o #73, OU subir o próprio pydantic (que puxa um
+core compatível). NÃO use scripts/relock.sh aqui — não há drift de transitivo a
+reconciliar, o estado pedido é inalcançável.
+#74 (structlog 25.5→26.1, MAJOR) e #75 (types-requests, dev) estão CLEAN, 9/9 verdes.
+
+▶ O trabalho de CI terminou e está mergeado. Fora o #73, nada bloqueia neste repo.
 
 ▶ O MAIOR ITEM VIVO ESTÁ FORA DESTE REPO: PII dentro dos arquivos de memória do Claude
 Code (~/.claude/projects/*/memory/). Medido em 02/08: 8 arquivos com número CNJ real; um

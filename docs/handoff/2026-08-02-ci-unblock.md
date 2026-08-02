@@ -15,8 +15,9 @@
   failure).
 - **Security:** `pip-audit` on `main` reports `No known vulnerabilities found`; 0 open
   dependabot alerts (was 26 Pillow advisories).
-- **Open PRs:** **none.** #72 merged at 06:53 with authorization, `6cf6cb6`; `main` CI green
-  after it (9 jobs, 7–12 steps each).
+- **Open PRs:** **3, all opened by dependabot at 09:55–09:56 UTC**, minutes after this
+  session's merges updated the dependency graph. See the next section — **#73 must not be
+  merged as it stands.**
 - **Deploy:** `render.yaml` exists. Whether the Render service is actually connected and
   auto-deploying **was not measured** — I have no Render credentials. Treat a merge to
   `main` as possibly triggering a deploy.
@@ -102,10 +103,47 @@
   drift a later `uv lock --check` was meant to detect. Corrections are recorded at the top of
   `docs/superpowers/plans/2026-08-02-unblock-ci.md`.
 
+## 🔴 PR #73 would break the Docker build — do not merge it as it stands
+
+Measured 2026-08-02 07:00. This is the failure the drift guard was built for, arriving on a
+live PR minutes after the guard shipped.
+
+**#73 changes exactly one file, `requirements.txt`, `+1/-1`** — it bumps `pydantic-core`
+2.46.4 → 2.47.0 and leaves `uv.lock` and `pyproject.toml` untouched. But:
+
+```
+pydantic 2.13.4 declares:  pydantic-core==2.46.4     (an exact pin)
+#73's requirements.txt has: pydantic==2.13.4
+                            pydantic-core==2.47.0
+```
+
+Those two lines are **mutually unsatisfiable**. `pip install -r requirements.txt` returns
+`ResolutionImpossible`, and `requirements.txt` is what `Dockerfile` installs. This is
+verbatim the bug that broke the build in PRs #48, #49 and #51 — the one that caused the
+`pip` ecosystem to be retired in favour of `uv`. It has now reappeared **through the `uv`
+ecosystem** (branch `dependabot/uv/production-dependencies-ff6f40ee51`,
+`package-manager=uv`), so retiring `pip` did not close the class.
+
+**The guard caught it.** `requirements.txt ⇄ uv.lock sync` fails; the other 8 jobs pass. Note
+the disguise: a one-file, one-line diff invites a merge without reading. Before this
+session the guard compared against a fresh network resolution and would have let it through.
+
+**What to do with it** — a judgement call, not a mechanical fix. `pydantic-core` cannot move
+while `pydantic` stays at 2.13.4, so the options are: close #73; or bump `pydantic` itself,
+which pulls a compatible core. Do not "fix" it with `scripts/relock.sh` — there is no
+transitive drift to reconcile here, the requested state is simply unreachable.
+
+The other two are clean and were not merged only because this session was wrapping up:
+- **#74** — `structlog` 25.5.0 → 26.1.0, `MERGEABLE/CLEAN`, 9/9 green. Note it is a **major**
+  version bump; the suite passing is evidence but read the changelog.
+- **#75** — `types-requests`, dev group, `MERGEABLE/CLEAN`, 9/9 green.
+
 ## ▶ Next concrete action
 
-**Nothing is blocking.** The CI work is finished and merged; `main` is green with zero open
-PRs. What follows is optional, in the order I would take it:
+Nothing in the CI work is blocking — it is finished and merged, and `main` is green. What
+follows is in the order I would take it:
+
+0. **Deal with #73 (above).** It is the only item with a wrong-if-ignored outcome.
 
 1. **Redact the PII sitting in the Claude Code memory files.** This is the largest live
    finding and it is *outside* this repo — see "Outside this repo" below. It is not
