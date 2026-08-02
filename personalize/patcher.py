@@ -150,8 +150,15 @@ def _apply_palette(soup: BeautifulSoup, palette: dict[str, str]) -> BeautifulSou
 
     for tag in soup.find_all(class_=True):
         raw = tag.get("class")
-        # ``class`` may be a single string (when parsed by html.parser) or a
-        # list (BeautifulSoup multi-valued attribute with lxml). Normalize.
+        # Normalize ``class`` to a list of tokens.
+        #
+        # Measured 2026-08-02 on bs4 4.14.3 and 4.15.0, with html.parser (what
+        # this function uses, see above) and lxml: BOTH return an
+        # ``AttributeValueList`` — a list subclass — because ``class`` is a
+        # multi-valued attribute. The string branch is therefore not reached by
+        # either parser today. It is kept deliberately: bs4 lets a caller narrow
+        # ``multi_valued_attributes``, and under that configuration ``class``
+        # comes back as a plain string. Do not delete it as dead code.
         tokens: list[str]
         if isinstance(raw, str):
             tokens = raw.split()

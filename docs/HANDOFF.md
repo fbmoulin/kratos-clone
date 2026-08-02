@@ -115,7 +115,17 @@ uv run pytest tests/test_post.py -v  # specific file
 | CodeRabbit | ~10s | auto-review on every PR (3rd-party bot installed at user level) |
 | Code Review Doctor | ~5s | auto-review on every PR (3rd-party bot) |
 
-All 4 first-party jobs are required-status-checks via repo ruleset (`Protect main`, ruleset id `15582219`).
+**Only 2 of the first-party jobs are required-status-checks**, via repo ruleset (`Protect main`,
+ruleset id `15582219`): `Lint (ruff)` and `Import + module smoke test`. Measured 2026-08-02 with
+`gh api repos/fbmoulin/kratos-clone/rulesets/15582219`.
+
+`mypy`, `pytest`, `bandit`, `pip-audit`, `render-live`, `requirements.txt ⇄ uv.lock sync` and the
+`forward-compat` canary all run on every PR but **gate nothing** — a PR can merge with any of them
+red. This is not hypothetical: `mypy` was red on `main` from 2026-06-29 until 2026-08-02 and every
+PR opened in that window inherited the failure while remaining mergeable.
+
+Note also `bypass_actors: RepositoryRole id=5, mode=always` — the repository owner bypasses the
+ruleset entirely, so even the two required checks are advisory for that account.
 
 ---
 
