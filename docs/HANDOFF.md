@@ -115,17 +115,44 @@ uv run pytest tests/test_post.py -v  # specific file
 | CodeRabbit | ~10s | auto-review on every PR (3rd-party bot installed at user level) |
 | Code Review Doctor | ~5s | auto-review on every PR (3rd-party bot) |
 
-**Only 2 of the first-party jobs are required-status-checks**, via repo ruleset (`Protect main`,
-ruleset id `15582219`): `Lint (ruff)` and `Import + module smoke test`. Measured 2026-08-02 with
-`gh api repos/fbmoulin/kratos-clone/rulesets/15582219`.
+**4 of the 9 jobs are required-status-checks**, via repo ruleset (`Protect main`, ruleset id
+`15582219`), as of 2026-08-02:
 
-`mypy`, `pytest`, `bandit`, `pip-audit`, `render-live`, `requirements.txt ⇄ uv.lock sync` and the
-`forward-compat` canary all run on every PR but **gate nothing** — a PR can merge with any of them
-red. This is not hypothetical: `mypy` was red on `main` from 2026-06-29 until 2026-08-02 and every
-PR opened in that window inherited the failure while remaining mergeable.
+- `Lint (ruff)`
+- `Import + module smoke test`
+- `mypy (…)` — added 2026-08-02
+- `pytest (kratos_clone + post + client_errors)` — added 2026-08-02
 
-Note also `bypass_actors: RepositoryRole id=5, mode=always` — the repository owner bypasses the
-ruleset entirely, so even the two required checks are advisory for that account.
+`bandit`, `pip-audit`, `render-live`, `requirements.txt ⇄ uv.lock sync` and the `forward-compat`
+canary run on every PR but gate nothing. Until 2026-08-02 only the first two were required, which
+is why `mypy` could stay red on `main` from 2026-06-29 onward while every PR opened in that window
+inherited the failure and remained mergeable.
+
+`strict_required_status_checks_policy` is deliberately **false**: enabling it would force every
+dependabot branch to be brought up to date with `main` before it could merge, turning each push to
+`main` into a rebase round for every open PR.
+
+`bypass_actors: RepositoryRole id=5, bypass_mode=always` — the repository owner bypasses the
+ruleset entirely, so all four checks remain advisory for that account.
+
+> ### 🔴 The `mypy` context string is TRUNCATED — do not retype it from `ci.yml`
+>
+> The `mypy` job's `name:` in `ci.yml` is **114 characters**. GitHub truncates emitted check-run
+> names at **98**, ending in a literal `...`. The ruleset context must be the *emitted* 98-char
+> string, not the declared one.
+>
+> This fails silently and expensively: a context that never matches an emitted check does not
+> error — it creates a required check that never arrives, so **every PR blocks forever** waiting
+> for it. Read the emitted names, never the declared ones:
+>
+> ```bash
+> gh api repos/fbmoulin/kratos-clone/commits/main/check-runs -q '.check_runs[] | "\(.name|length)|\(.name)"'
+> ```
+>
+> Consequence: **renaming the `mypy` job breaks the required check.** If you shorten that name
+> below 98 characters the truncation disappears, the context stops matching, and `main` blocks.
+> Update the ruleset in the same change, and verify afterwards that an open PR reports
+> `MERGEABLE/CLEAN` rather than `BLOCKED`.
 
 ---
 
