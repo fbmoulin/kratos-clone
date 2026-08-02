@@ -103,10 +103,24 @@
   drift a later `uv lock --check` was meant to detect. Corrections are recorded at the top of
   `docs/superpowers/plans/2026-08-02-unblock-ci.md`.
 
-## 🔴 PR #73 would break the Docker build — do not merge it as it stands
+## 🔴 The `pydantic-core` PR is a RECURRING trap — it has already been merged once
 
-Measured 2026-08-02 07:00. This is the failure the drift guard was built for, arriving on a
-live PR minutes after the guard shipped.
+**Status: #73 was closed by Felipe at 09:59Z. It will come back.** Researched 2026-08-02
+07:15; this section supersedes an earlier draft that proposed a fix which does not exist.
+
+This is the failure the drift guard was built for, and it is not new. The same PR has now
+appeared **four times**:
+
+| PR | Outcome |
+|---|---|
+| **#43** | **MERGED** — `requirements.txt +1/-1` — **broke the Docker build** |
+| **#48** | MERGED — the fix, restoring the pin (`requirements.txt +2/-2`) |
+| **#53** | Closed by dependabot itself ("updatable in another way") |
+| **#73** | Closed by Felipe, 4 min after it opened |
+
+**Closing does not stop it.** Dependabot said so on #73, verbatim: *"This pull request was
+built based on a group rule. Closing it will not ignore any of these versions in future
+pull requests."*
 
 **#73 changes exactly one file, `requirements.txt`, `+1/-1`** — it bumps `pydantic-core`
 2.46.4 → 2.47.0 and leaves `uv.lock` and `pyproject.toml` untouched. But:
@@ -128,10 +142,62 @@ ecosystem** (branch `dependabot/uv/production-dependencies-ff6f40ee51`,
 the disguise: a one-file, one-line diff invites a merge without reading. Before this
 session the guard compared against a fresh network resolution and would have let it through.
 
-**What to do with it** — a judgement call, not a mechanical fix. `pydantic-core` cannot move
-while `pydantic` stays at 2.13.4, so the options are: close #73; or bump `pydantic` itself,
-which pulls a compatible core. Do not "fix" it with `scripts/relock.sh` — there is no
-transitive drift to reconcile here, the requested state is simply unreachable.
+### ❌ Correction: "just bump `pydantic`" does not work — measured
+
+An earlier draft of this section proposed bumping `pydantic` so it would pull a compatible
+core. **That escape hatch does not exist.** Measured 2026-08-02 in a disposable worktree:
+
+| Command | Result |
+|---|---|
+| `uv lock --upgrade-package pydantic-core` | stays **2.46.4** — uv refuses to move it |
+| `uv lock --upgrade-package pydantic --upgrade-package pydantic-core` | **both stay** put |
+| latest `pydantic` on PyPI | **2.13.4** — already installed, and it pins `pydantic-core==2.46.4` |
+
+`pydantic-core 2.47.0` is published, but **nothing consumes it yet**. It is unreachable by
+any coherent resolution of this project until `pydantic` itself ships a release pinning it —
+at which point the group will bump both together and the guard will pass on its own.
+
+Also do NOT reach for `scripts/relock.sh`: there is no transitive drift to reconcile here.
+The requested state is unreachable, not merely unsynchronised.
+
+### Root cause: `requirements.txt` is a generated artifact that looks like a manifest
+
+Dependabot cannot tell the difference, so it edits single lines in it with no regard for what
+`uv.lock` can satisfy. Both #43 and #73 touched **only** `requirements.txt`, `+1/-1`.
+
+The `dependabot.yml` note claiming the uv ecosystem "never touches requirements.txt" is
+**measured false** — partially corrected in #72, but the sharper truth is this: for a
+lock-pinned transitive, dependabot edits `requirements.txt` *alone*, producing a file that
+`pip install -r` cannot resolve.
+
+### No security pressure, and `ignore` is not free
+
+- **0 dependabot advisories** on `pydantic`/`pydantic-core`; `pip-audit` clean. There is no
+  urgency behind this bump.
+- An `ignore` rule would stop the recurrence, **but it also suppresses security updates.**
+  Confirmed on GitHub's Dependabot options reference: options marked with the security icon
+  — `ignore` among them — "also change how Dependabot creates pull requests for security
+  updates, except where `target-branch` is used", and this repo does not use `target-branch`.
+  So `ignore: pydantic-core` would blind the repo to a future CVE in a Rust-backed validation
+  core. There is currently **no `ignore` rule at all** in `dependabot.yml`.
+
+### The options, ranked
+
+1. **Delete `requirements.txt`** and have the `Dockerfile` install from `uv.lock`
+   (`uv sync --locked`). This removes the generated-artifact-that-looks-like-a-manifest, and
+   with it this entire bug class — plus the drift guard's reason to exist and
+   `scripts/relock.sh`. **Note this is exactly what the spec deliberately deferred** (plan
+   §Known deferrals, first item). The deferral has now cost one broken build and four PRs.
+   Five files reference it: `Dockerfile`, `build.sh`, `.github/workflows/ci.yml`,
+   `.github/dependabot.yml`, `scripts/relock.sh`.
+2. **Do nothing.** The guard catches it every time, loudly, and closing takes ten seconds.
+   Cost is recurring noise; benefit is zero blind spots. Defensible.
+3. **Version-scoped ignore** (`dependency-name: pydantic-core`, `versions: ["2.47.0"]`) —
+   silences exactly this one, keeps CVE visibility for every other version. Returns if
+   `2.48.0` ships while `pydantic` still pins `2.46.4`.
+
+⛔ **Not recommended: a blanket `ignore` on `pydantic-core`.** The security blind spot is
+permanent and silent; the noise it removes is neither.
 
 The other two are clean and were not merged only because this session was wrapping up:
 - **#74** — `structlog` 25.5.0 → 26.1.0, `MERGEABLE/CLEAN`, 9/9 green. Note it is a **major**

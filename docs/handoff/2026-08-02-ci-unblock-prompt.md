@@ -22,16 +22,23 @@ Estado medido em 2026-08-02 ~07:00: main em bf85066, árvore limpa (só AGENTS.m
 358 passed / 3 skipped, mypy strict limpo, CI 9/9 verde, pip-audit sem vulnerabilidades,
 0 alertas do dependabot, 3 PRs abertos (#73, #74, #75 — dependabot, abertos 09:55 UTC).
 
-🔴 PRIMEIRO DE TUDO: NÃO MERGEIE O #73 COMO ESTÁ. Ele muda 1 arquivo, +1/-1 (parece
-inofensivo) e quebraria o build do Docker: sobe pydantic-core para 2.47.0 no
-requirements.txt sem tocar o uv.lock, mas o pydantic 2.13.4 declara pydantic-core==2.46.4
-como pin EXATO — as duas linhas são insatisfazíveis e `pip install -r` dá
-ResolutionImpossible. É o bug que quebrou os PRs #48/#49/#51 e motivou aposentar o
-ecossistema pip; voltou pelo ecossistema uv. A guarda requirements.txt ⇄ uv.lock PEGOU
-(os outros 8 jobs passam). Saídas: fechar o #73, OU subir o próprio pydantic (que puxa um
-core compatível). NÃO use scripts/relock.sh aqui — não há drift de transitivo a
-reconciliar, o estado pedido é inalcançável.
-#74 (structlog 25.5→26.1, MAJOR) e #75 (types-requests, dev) estão CLEAN, 9/9 verdes.
+🔴 ARMADILHA RECORRENTE — o PR de `pydantic-core`. O #73 JÁ FOI FECHADO pelo Felipe, mas
+ELE VOLTA. Quando voltar (1 arquivo, requirements.txt, +1/-1 — parece inofensivo):
+NÃO MERGEIE. Sobe pydantic-core para 2.47.0 sem tocar o uv.lock, mas o pydantic 2.13.4
+declara pydantic-core==2.46.4 como pin EXATO ⇒ `pip install -r` dá ResolutionImpossible e
+o build do Docker quebra. NÃO É TEÓRICO: o PR #43, com assinatura IDÊNTICA, foi MERGEADO e
+quebrou o build; o #48 consertou. Já apareceu 4× (#43 merged, #53, #73, e a próxima).
+⚠️ Fechar NÃO impede o retorno — o próprio dependabot avisa isso no PR.
+❌ NÃO tente "subir o pydantic p/ puxar um core compatível": MEDIDO, não funciona —
+   2.13.4 é a ÚLTIMA release e é ela que pina o core em 2.46.4.
+❌ NÃO use scripts/relock.sh: não há drift a reconciliar, o estado pedido é INALCANÇÁVEL.
+❌ NÃO ponha `ignore` amplo no pydantic-core: `ignore` também suprime SECURITY updates
+   (confirmado na doc do GitHub) ⇒ criaria ponto cego permanente para CVE.
+✅ Saídas boas: (a) apagar o requirements.txt e o Dockerfile instalar do uv.lock — é a
+   causa raiz (artefato gerado que PARECE manifesto) e era o 1º item dos "Known deferrals"
+   do plano; (b) não fazer nada e fechar quando aparecer — a guarda pega sempre.
+ℹ️ Sem pressa de segurança: 0 advisories em pydantic/pydantic-core, pip-audit limpo.
+#74 (structlog 25.5→26.1, MAJOR) e #75 (types-requests, dev) estavam CLEAN, 9/9 verdes.
 
 ▶ O trabalho de CI terminou e está mergeado. Fora o #73, nada bloqueia neste repo.
 
