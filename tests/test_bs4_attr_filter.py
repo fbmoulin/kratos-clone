@@ -11,6 +11,11 @@ exists only in the type stubs' overload set, so only a type-checker can see it. 
 guard against a revert is the unpinned `forward-compat` CI job, which type-checks
 against the latest bs4 from PyPI. What these tests DO catch is bs4 changing presence
 semantics underneath us, which would silently break the capture path.
+
+The same limit applies to the `.get()` reads: nothing here imports `downloader.py`, so
+swapping `elem.get(KEY)` back to `elem[KEY]` also goes undetected. These tests establish
+that the two forms are interchangeable *while the filter guarantees presence* — they do
+not police which form the capture path actually uses.
 """
 
 import pytest
@@ -58,3 +63,22 @@ def test_every_match_carries_the_attribute():
     for key in ("style", "data-background", "src"):
         for el in _soup().find_all(name=None, attrs={key: True}):
             assert el.get(key) is not None, f"{el.name} matched on {key} but lacks it"
+
+
+def test_get_and_subscript_agree_for_matched_elements():
+    """`.get(key)` must return exactly what `[key]` returns when the element matched.
+
+    This equivalence is what makes replacing `el[key]` with `el.get(key)` behaviour-preserving at the filtered call sites.
+    """
+    for key in ("style", "data-background", "src"):
+        for el in _soup().find_all(name=None, attrs={key: True}):
+            assert el.get(key) == el[key]
+
+
+def test_subscript_raises_but_get_returns_none_when_absent():
+    """Documents why `.get()` is the safer form if the filter is ever widened."""
+    tag = _soup().find("b")
+    assert tag is not None
+    assert tag.get("style") is None
+    with pytest.raises(KeyError):
+        _ = tag["style"]
