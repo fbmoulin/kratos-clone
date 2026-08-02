@@ -21,19 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          python-version: "3.12"
+          version: "0.12.1"
+          enable-cache: true
 
-      - name: Install ruff
-        run: pip install ruff
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
 
       - name: Ruff check
-        run: ruff check kratos_clone/ scripts/ --output-format=github
+        run: uv run --frozen ruff check kratos_clone/ scripts/ --output-format=github
 
       - name: Ruff format check
-        run: ruff format --check kratos_clone/ scripts/
+        run: uv run --frozen ruff format --check kratos_clone/ scripts/
 
   requirements-lock-sync:
     # Guards the deploy path: requirements.txt is the pip/Docker source of truth
@@ -72,20 +73,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          python-version: "3.12"
-          cache: pip
+          version: "0.12.1"
+          enable-cache: true
 
-      - name: Install runtime deps
-        run: |
-          pip install --upgrade pip
-          pip install playwright beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog pytest openai pillow python-dotenv
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
 
       - name: Verify kratos_clone imports
         run: |
-          python -c "
+          uv run --frozen python -c "
           from kratos_clone.capture import HardenedCapture, CaptureConfig
           from kratos_clone.post import rewrite_html_assets, strip_scroll_fix
           cfg = CaptureConfig()
@@ -95,11 +94,11 @@ jobs:
           "
 
       - name: Verify CLI entry point parses
-        run: python -m kratos_clone --help
+        run: uv run --frozen python -m kratos_clone --help
 
       - name: Smoke test scripts/ imports
         run: |
-          python -c "
+          uv run --frozen python -c "
           import importlib.util, pathlib
           for f in pathlib.Path('scripts').glob('*.py'):
               spec = importlib.util.spec_from_file_location(f.stem, f)
@@ -110,7 +109,7 @@ jobs:
 
       - name: Verify post.py round-trip
         run: |
-          python -c "
+          uv run --frozen python -c "
           from kratos_clone.post import rewrite_html_assets, strip_scroll_fix
           html = '<html><head></head><body><img src=\"https://x.com/a.png\"></body></html>'
           assets = {'https://x.com/a.png': 'assets/a_abc.png'}
@@ -127,7 +126,7 @@ jobs:
 
       - name: Verify Flask app imports without side effects (factory pattern)
         run: |
-          python -c "
+          uv run --frozen python -c "
           import threading
           before = threading.active_count()
           import app
@@ -148,19 +147,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          python-version: "3.12"
-          cache: pip
+          version: "0.12.1"
+          enable-cache: true
 
-      - name: Install runtime deps + pytest
-        run: |
-          pip install --upgrade pip
-          pip install pytest pytest-asyncio playwright beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog openai pillow python-dotenv
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
 
       - name: Run pytest
-        run: pytest -v tests/
+        run: uv run --frozen pytest -v tests/
 
   render-live:
     # Review #2: tests/test_render_live.py is the regression net for the
@@ -175,22 +172,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          python-version: "3.12"
-          cache: pip
+          version: "0.12.1"
+          enable-cache: true
 
-      - name: Install runtime deps + Playwright Chromium
-        run: |
-          pip install --upgrade pip
-          pip install pytest pytest-asyncio playwright beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog openai pillow python-dotenv
-          python -m playwright install --with-deps chromium
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+
+      - name: Install Playwright Chromium
+        run: uv run --frozen playwright install --with-deps chromium
 
       - name: Run live render regression test
         env:
           RUN_PLAYWRIGHT_LIVE: "1"
-        run: pytest -v tests/test_render_live.py
+        run: uv run --frozen pytest -v tests/test_render_live.py
 
   pip-audit:
     name: pip-audit (CVE scan)
@@ -198,22 +195,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          python-version: "3.12"
+          version: "0.12.1"
+          enable-cache: true
 
-      - name: Install runtime deps + pip-audit
-        run: |
-          pip install --upgrade pip
-          pip install pip-audit
-          # Install runtime deps so pip-audit sees real installed versions
-          pip install playwright beautifulsoup4 requests urllib3 flask flask-limiter gunicorn psutil structlog openai pillow python-dotenv
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
 
       - name: Audit installed packages
         # Strict mode reserved for Phase 7; soft gate now. Re-emits findings
         # so they're visible in CI logs even when not failing the build.
-        run: pip-audit --vulnerability-service osv --desc on || true
+        run: uv run --frozen pip-audit --vulnerability-service osv --desc on || true
 
   mypy:
     name: mypy (Stage A+B+C+D — full strict on personalize/ + app.py + wsgi.py + kratos_clone/* + scripts/* + downloader.py)
@@ -221,17 +215,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          python-version: "3.12"
-          cache: pip
+          version: "0.12.1"
+          enable-cache: true
 
-      - name: Install mypy + project deps
-        run: |
-          pip install --upgrade pip
-          pip install mypy openai pillow python-dotenv playwright beautifulsoup4 \
-            requests types-requests urllib3 flask flask-limiter gunicorn psutil structlog
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
 
       - name: Run mypy
         # HARD gate. All source files now under strict typing coverage:
@@ -239,7 +230,7 @@ jobs:
         # scripts/{inventory,probe,validate,post_process,generate_design_system_v2},
         # and downloader.py. Stage D (downloader.py) closed the last permissive
         # override; the rollout (Stages A–D) is now complete.
-        run: mypy --config-file pyproject.toml
+        run: uv run --frozen mypy --config-file pyproject.toml
 
   bandit:
     name: bandit (security lint)
@@ -247,19 +238,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
         with:
-          python-version: "3.12"
+          version: "0.12.1"
+          enable-cache: true
 
-      - name: Install bandit
-        run: |
-          pip install --upgrade pip
-          pip install bandit
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
 
       - name: Run bandit (MEDIUM gate, LOW informational)
         # HARD gate on MEDIUM severity. LOW findings (e.g., 2× B110
         # try/except/pass) remain informational. Existing HIGH/MEDIUM
         # findings (debug=True in __main__, MD5 for asset filenames) are
         # annotated #nosec B201 / usedforsecurity=False.
-        run: bandit -r personalize/ kratos_clone/ scripts/ app.py --severity-level medium
+        run: uv run --frozen bandit -r personalize/ kratos_clone/ scripts/ app.py --severity-level medium
