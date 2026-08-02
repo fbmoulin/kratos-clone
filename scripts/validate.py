@@ -160,7 +160,7 @@ def check_asset_refs(capture_dir: Path) -> list[str]:
     soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
     missing: list[str] = []
     for attr in ("src", "href"):
-        for tag in soup.find_all(attrs={attr: True}):
+        for tag in soup.find_all(name=None, attrs={attr: True}):
             value = tag.get(attr)
             if not isinstance(value, str) or not value.startswith("assets/"):
                 continue
