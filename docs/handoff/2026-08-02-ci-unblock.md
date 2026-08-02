@@ -6,7 +6,7 @@
 ## State
 
 - **Repo / branch:** `/home/fbmoulin/Website-Downloader` @ `main` (default branch is `main`)
-- **HEAD:** `dfff995` · working tree: clean except one untracked file (`AGENTS.md`,
+- **HEAD:** `6cf6cb6` · working tree: clean except one untracked file (`AGENTS.md`,
   deliberate — see traps) · remote: in sync, 0 unpushed
 - **Tests:** **358 passed, 3 skipped** — I ran `uv run --frozen pytest -q` on `main` at
   `dfff995`. mypy strict: `Success: no issues found in 21 source files`.
@@ -15,8 +15,8 @@
   failure).
 - **Security:** `pip-audit` on `main` reports `No known vulnerabilities found`; 0 open
   dependabot alerts (was 26 Pillow advisories).
-- **Open PRs:** **#72 only** — `MERGEABLE/CLEAN`, 9/9 green, waiting on a human merge
-  because it touches `.github/`.
+- **Open PRs:** **none.** #72 merged at 06:53 with authorization, `6cf6cb6`; `main` CI green
+  after it (9 jobs, 7–12 steps each).
 - **Deploy:** `render.yaml` exists. Whether the Render service is actually connected and
   auto-deploying **was not measured** — I have no Render credentials. Treat a merge to
   `main` as possibly triggering a deploy.
@@ -104,17 +104,40 @@
 
 ## ▶ Next concrete action
 
-1. **Merge PR #72** — `gh pr merge 72 -R fbmoulin/kratos-clone --rebase`. It is
-   `MERGEABLE/CLEAN`, 9/9 green, comments-only. It corrects three places that still teach
-   the *wrong* relock command (the one measured to overshoot). Left unmerged only because
-   it touches `.github/`, which requires explicit authorization under Felipe's push policy.
-2. Optional, not blocking — widen the `ruff` CI scope to `personalize/` and `tests/`. Both
-   are ruff-clean today (measured), so the two `run:` lines in the `lint` job should pass
-   first try. See `TODO.md`.
-3. Optional — delete the merged remote branches (`fix/bs4-find_all-overloads`,
-   `ci/pin-jobs-to-lockfile`, `feat/health-build-sha`, `docs/relock-name-transitives-not-directs`
-   once #72 lands). Rebase-merges leave them behind because the branch tip is not an
-   ancestor of `main`.
+**Nothing is blocking.** The CI work is finished and merged; `main` is green with zero open
+PRs. What follows is optional, in the order I would take it:
+
+1. **Redact the PII sitting in the Claude Code memory files.** This is the largest live
+   finding and it is *outside* this repo — see "Outside this repo" below. It is not
+   optional in the sense of being unimportant; it is optional in the sense that nothing in
+   `kratos-clone` depends on it.
+2. Widen the `ruff` CI scope to `personalize/` and `tests/`. Both are ruff-clean today
+   (measured), so changing the two `run:` lines in the `lint` job should pass first try.
+   See `TODO.md`.
+3. Delete the four merged remote branches: `fix/bs4-find_all-overloads`,
+   `ci/pin-jobs-to-lockfile`, `feat/health-build-sha`,
+   `docs/relock-name-transitives-not-directs`. Rebase-merges leave them behind, because the
+   branch tip is not an ancestor of `main`.
+
+## 🔴 Outside this repo — PII inside the Claude Code memory files
+
+Found 2026-08-02 while answering whether `~/.claude/projects/*/memory/` should be
+versioned. It should not, and the reason is the finding:
+
+- **8 memory files contain real CNJ case numbers.** Two are serious: one holds a table of
+  six TJES repossession cases with **full party names**, vehicle plates, amounts and the
+  recommended ruling for each; another identifies a **6-year-old child with TEA/TDAH** by
+  name, tied to a case number.
+- These were never swept. `projects/` has always been gitignored, so it was never a
+  repository, so no repo-scoped scan ever reached it.
+- ✅ One real secret found and redacted: a Qdrant Cloud API key (signed HS256 JWT, write
+  scope) that had sat in plaintext for 164 days. 🔴 **Redacting does not revoke it — it
+  must be rotated in the Qdrant dashboard, and only Felipe can do that.** The other two
+  gitleaks hits are false positives (a spec filename, and the string `kratos-v5-ec2.pem`,
+  which is a key *filename*, not a key).
+
+Detail, and the commands that re-find all of it:
+`~/.claude/projects/-home-fbmoulin/memory/reference_pii-inside-the-memory-files-2026-08-02.md`
 
 ## ⚠️ Active traps
 
@@ -143,7 +166,7 @@
 
 ## Open (not blocking)
 
-- **PR #72** — ready, green, needs a human merge (see Next action).
+- **PII in the Claude Code memory files** — see the section above. Largest live item.
 - **`ruff` scope narrower than `bandit`/`mypy`** — `personalize/` and `tests/` are clean but
   unguarded. Recorded in `TODO.md`.
 - **No metrics or tracing** — zero prometheus/otel/sentry/datadog/statsd. Observability is

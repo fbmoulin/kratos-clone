@@ -11,22 +11,34 @@ Leia primeiro: /home/fbmoulin/Website-Downloader/docs/handoff/2026-08-02-ci-unbl
 Projeto: fbmoulin/kratos-clone (clonador de sites SPA, Flask + Playwright, repo PÚBLICO).
 Checkout local: ~/Website-Downloader, branch main.
 
-ANTES DE QUALQUER COISA, RE-MEÇA — os números abaixo são de 2026-08-02 ~06:30 -03 e
+ANTES DE QUALQUER COISA, RE-MEÇA — os números abaixo são de 2026-08-02 ~06:55 -03 e
 envelhecem sozinhos. Trate cada um como pista datada, não como fato:
 
   git -C ~/Website-Downloader status -sb && git -C ~/Website-Downloader log --oneline -5
   gh pr list -R fbmoulin/kratos-clone
   cd ~/Website-Downloader && uv sync --locked --group dev && uv run --frozen pytest -q
 
-Estado medido em 2026-08-02: main em dfff995, árvore limpa (só AGENTS.md untracked),
+Estado medido em 2026-08-02: main em 6cf6cb6, árvore limpa (só AGENTS.md untracked),
 358 passed / 3 skipped, mypy strict limpo, CI 9/9 verde, pip-audit sem vulnerabilidades,
-0 alertas do dependabot, 1 PR aberto (#72).
+0 alertas do dependabot, ZERO PRs abertos.
 
-▶ PRÓXIMA AÇÃO: mergear o PR #72.
-  gh pr merge 72 -R fbmoulin/kratos-clone --rebase
-Ele está MERGEABLE/CLEAN com 9/9 verdes e é só comentários. Corrige três lugares que ainda
-ensinam o comando de relock ERRADO. Ficou sem mergear apenas porque toca .github/, que na
-política de push do Felipe exige autorização explícita — PERGUNTE antes de mergear.
+▶ NADA ESTÁ BLOQUEANDO neste repo. O trabalho de CI terminou e está mergeado.
+
+▶ O MAIOR ITEM VIVO ESTÁ FORA DESTE REPO: PII dentro dos arquivos de memória do Claude
+Code (~/.claude/projects/*/memory/). Medido em 02/08: 8 arquivos com número CNJ real; um
+deles tem tabela de 6 processos do TJES com NOME COMPLETO DAS PARTES, placas, valores e a
+decisão recomendada; outro identifica uma CRIANÇA DE 6 ANOS com TEA/TDAH pelo nome.
+Nunca foram varridos porque `projects/` sempre esteve no .gitignore, logo nunca foi repo.
+🔴 A API key do Qdrant Cloud foi REDIGIDA mas NÃO ROTACIONADA — só o Felipe faz isso
+(dashboard do Qdrant: criar nova → atualizar consumidores → revogar a velha).
+Detalhe e comandos:
+~/.claude/projects/-home-fbmoulin/memory/reference_pii-inside-the-memory-files-2026-08-02.md
+
+Opcionais neste repo, em ordem: (1) ampliar o escopo do ruff para personalize/ e tests/
+(ambos limpos hoje — mudar duas linhas `run:` do job lint deve passar de primeira);
+(2) apagar as 4 branches remotas já mergeadas (fix/bs4-find_all-overloads,
+ci/pin-jobs-to-lockfile, feat/health-build-sha, docs/relock-name-transitives-not-directs);
+(3) zero métricas/tracing; (4) actions/checkout@v7 ainda em tag mutável. Tudo em TODO.md.
 
 DECISÕES JÁ FECHADAS — NÃO REABRIR (repetidas aqui porque link não é lido):
 
@@ -49,6 +61,9 @@ DECISÕES JÁ FECHADAS — NÃO REABRIR (repetidas aqui porque link não é lido
    chave, nunca devolve "" ou null. Valor em branco cai para a próxima fonte. Lido a cada
    requisição, nunca cacheado no import.
 10. Todo merge com --rebase, nunca squash.
+11. NÃO versionar ~/.claude/projects/*/memory/ enquanto houver a PII acima. A regra
+    `projects/` no .gitignore está certa pelo alvo real: 1.221 transcripts .jsonl contêm
+    CNJ (1,8 GB). Quando limpar, des-ignorar só */memory/ com pii-sweep como pre-commit.
 
 JÁ TENTADO E DESCARTADO — não repita:
 
@@ -56,8 +71,8 @@ JÁ TENTADO E DESCARTADO — não repita:
   requirements.txt ⇄ uv.lock. O recreate reproduziu a mesma lacuna de 12 pacotes. É
   comportamento sistemático do ecossistema uv do dependabot.
 - scripts/relock.sh com os pacotes DIRETOS faz overshoot: --upgrade-package resolve para a
-  ÚLTIMA versão permitida, não a do PR (mediu-se openai -> 2.52.0 e playwright -> 1.62.0,
-  além do que o PR declarava). Nomeie os TRANSITIVOS que o diff da guarda lista.
+  ÚLTIMA versão permitida, não a do PR. Nomeie os TRANSITIVOS que o diff da guarda lista.
+  (O header do script e o dependabot.yml já dizem isso desde o PR #72.)
 - "uv export" sozinho para consertar a guarda REBAIXA 12 transitivos, certifi incluído.
 
 ARMADILHAS ATIVAS:
@@ -67,16 +82,12 @@ ARMADILHAS ATIVAS:
   não dá erro — cria um required check que nunca chega e todo PR bloqueia para sempre.
 - 🔴 AGENTS.md é untracked em cópia única. NUNCA `git add -A` ou `git add .` neste checkout.
 - ⚠️ Todo PR de produção do dependabot chega com a guarda de drift vermelha. É esperado.
-- ⚠️ bandit imprime "High: 10" na coluna de CONFIANÇA, não de severidade (Severity é
-  Low: 10, Medium: 0, High: 0; exit 0).
+- ⚠️ bandit imprime "High: 10" na coluna de CONFIANÇA, não de severidade (exit 0).
 - ⚠️ No Bash do Claude Code, grep e find são funções-sombra com heap do V8 — já travaram
   este WSL duas vezes. Use `command grep -r` ou `rg` em busca recursiva.
 - ⚠️ downloader.py é legado do upstream e está FORA do escopo do ruff no CI de propósito.
-  Seus 28 achados não são dívida nova.
-
-EM ABERTO (não bloqueia): ampliar o escopo do ruff para personalize/ e tests/ (ambos limpos
-hoje); zero métricas/tracing; actions/checkout@v7 ainda em tag mutável; limpar branches
-remotas já mergeadas. Tudo em TODO.md.
+- ⚠️ Diretórios em ~/.claude/projects/ começam com "-", então `cp ./"$d"/*.md` precisa do
+  ./ — sem ele o cp lê o caminho como flag e falha em silêncio.
 
 ⛔ NÃO EXECUTE ~/claudedocs/kratos-clone-audit-2026-08-01/PLAN-unblock-ci-2026-08-02.md nem
 o PROMPT-RETOMADA-2026-08-02.md daquele diretório. Ambos foram CUMPRIDOS em 02/08. A cópia
