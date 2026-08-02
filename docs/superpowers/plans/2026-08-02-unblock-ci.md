@@ -1,8 +1,27 @@
 # kratos-clone CI Unblock — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
-> (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> ## ⚠️ EXECUTED 2026-08-02 — read this before following any step below
+>
+> This plan was carried out. It is kept as a record of the reasoning, **not as a runbook**.
+> Five of its verification steps turned out to assert things that are not true, and following
+> them as written would produce measurements that look valid and are not. Corrections, in the
+> order you would hit them:
+>
+> | Where | The plan says | Measured on 2026-08-02 |
+> |---|---|---|
+> | Task 3 Step 2 | `uv run --frozen pip-audit --version` fails with *Failed to spawn*, proving `pip-audit` is undeclared | **Machine-dependent.** `uv run` falls back to `PATH`. On a workstation with a global `pip-audit` (conda, pipx) it prints a version and the proof silently inverts. Prove it with `ls .venv/bin/ \| grep -c pip-audit` (expect 0), or re-run under a CI-like `PATH`. |
+> | Task 4 Step 3 | `uv lock --upgrade-package <bad-name>` exits non-zero | **Exits 0.** `--upgrade-package` is a resolution hint, not a lookup; uv never validates the name. `scripts/relock.sh` therefore ships its own `assert_in_lock` guard — that guard is the fix for this, and deleting it restores the silent no-op. |
+> | Task 5 Step 1 and Task 6 Step 1 | probes mutate `pyproject.toml` with a bare Python `str.replace()` | **`str.replace()` does not fail when its target is absent.** It returns the text unchanged and the probe writes it back, so the drift never exists — and Task 6's probe then prints its own expected `GUARD PASSES — drift undetected` line without having run the experiment. Any such mutation must assert `after != before` and exit non-zero otherwise. |
+> | Task 5 Step 1 | `<UV_VERSION>` unresolved; fall back to 0.10.12 if probes disagree | **Resolved to `0.12.1`.** All probes matched, plus a fourth (added here) confirming `UV_FROZEN` still conflicts with `--locked` on the candidate. |
+> | Task 6 Step 3 | dependabot's uv ecosystem "also rewrites `requirements.txt`" | **Only for production-group bumps.** Development-group bumps do not touch it, because it is exported `--no-dev`. Measured on the open PRs: #66 (production) touches it, #65 (development) does not. |
+>
+> One further ordering hazard, found while running Task 6's probe: a bare `uv export` earlier in
+> the *same* script silently re-locks and erases the drift, so a later `uv lock --check` reports
+> 0 and looks like a refutation. Order matters inside a probe as much as inside the job.
+>
+> **For agentic workers (original note):** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to
+> implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `main` type-check green and make CI reproducible and enforcing, so that PR #66
 (Pillow 12.3.0, closing 13 advisories) can be merged with evidence rather than hope.
