@@ -296,10 +296,44 @@ def index() -> str:
     return render_template("index.html")
 
 
+# Sources for the running build's commit SHA, in priority order. Each is backed by a
+# deploy target committed to this repo: KC_BUILD_SHA is injected by our own Dockerfile
+# ARG, RENDER_GIT_COMMIT by Render (render.yaml), RAILWAY_GIT_COMMIT_SHA by Railway
+# (RAILWAY_DEPLOY.md). Our own variable wins so an explicit build-time value is never
+# overridden by whatever the platform happens to inject.
+_BUILD_SHA_ENV_VARS = ("KC_BUILD_SHA", "RENDER_GIT_COMMIT", "RAILWAY_GIT_COMMIT_SHA")
+
+
+def _resolve_build_sha() -> str:
+    """Return the commit SHA this process was built from, or the string ``unknown``.
+
+    Why this exists: a 200 from ``/health`` proves a process is alive, not that it is
+    running the commit you believe you deployed. An image can be rebuilt under the same
+    tag, ``docker compose up -d`` declines to re-pull when the tag already exists
+    locally, and a failed deploy can leave the previous release serving. All of those
+    keep answering 200 from stale code.
+
+    Read at call time, never cached at import: a cached value describes the build that
+    imported this module, which is the same stale-label failure the field exists to
+    detect.
+
+    Blank values fall through to the next source instead of being reported. A build ARG
+    that is declared but never passed arrives as an empty string, and ``"build_sha": ""``
+    reads like a resolved answer while being the absence of one. When nothing resolves,
+    the literal ``unknown`` is returned rather than omitting the key — an absent field
+    is indistinguishable from a build that predates this code.
+    """
+    for var in _BUILD_SHA_ENV_VARS:
+        value = os.environ.get(var, "").strip()
+        if value:
+            return value
+    return "unknown"
+
+
 @app.route("/health")
 def health() -> Response:
-    """Lightweight health endpoint with memory + session counts for monitoring."""
-    info: dict[str, Any] = {"status": "ok"}
+    """Lightweight health endpoint with build identity, memory and session counts."""
+    info: dict[str, Any] = {"status": "ok", "build_sha": _resolve_build_sha()}
     with session_lock:
         info["sessions"] = len(download_results)
         info["queues"] = len(message_queues)

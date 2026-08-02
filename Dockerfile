@@ -31,6 +31,16 @@ RUN mkdir -p downloads
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
+# Build identity, surfaced by /health so a 200 proves WHICH commit is answering.
+# Pass it at build time:
+#   docker build --build-arg GIT_SHA="$(git rev-parse HEAD)" .
+# Declared here, below every COPY, on purpose: an ARG invalidates the build cache for
+# each layer beneath it, so placing it above the pip and playwright installs would
+# rebuild those on every commit. Left empty by default — app.py treats a blank value
+# as unset and falls through to the platform's own variable, then to "unknown".
+ARG GIT_SHA=""
+ENV KC_BUILD_SHA=$GIT_SHA
+
 # Set default PORT environment variable
 ENV PORT=8080
 
