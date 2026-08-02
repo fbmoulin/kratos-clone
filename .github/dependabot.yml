@@ -13,10 +13,21 @@
 # ecosystem updates pyproject.toml + uv.lock via uv's resolver, so it stays
 # internally consistent and never touches requirements.txt.
 #
-# NOTE: dependabot's uv ecosystem does NOT regenerate requirements.txt, so a uv
-# bump leaves it stale (lock ahead). The CI "requirements.txt <-> uv.lock sync"
-# guard will flag this on the PR; refresh before merging with:
-#   uv export --format requirements-txt --no-dev --no-emit-project --no-hashes -o requirements.txt
+# NOTE: dependabot's uv ecosystem updates pyproject.toml AND uv.lock. Whether it
+# also rewrites requirements.txt depends on the group: production bumps do (the
+# packages appear there), development bumps do not (requirements.txt is exported
+# --no-dev, so dev packages have no line to rewrite).
+#
+# When it does rewrite it, it uses a different resolution scope, so requirements.txt
+# ends up AHEAD of uv.lock. Measured on PR #66: uv.lock advanced 4 packages
+# (beautifulsoup4, openai, pillow, playwright) while requirements.txt advanced 16.
+# The CI "requirements.txt <-> uv.lock sync" guard flags the mismatch. Refresh
+# before merging with:
+#   scripts/relock.sh <package> [<package> ...]
+#
+# Do NOT run `uv export` alone to "fix" it: the export regenerates from the lock and
+# therefore DOWNGRADES the 12 transitives dependabot advanced — including certifi,
+# the CA trust store.
 version: 2
 updates:
   - package-ecosystem: "uv"
