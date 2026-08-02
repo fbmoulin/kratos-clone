@@ -19,15 +19,23 @@
 # --no-dev, so dev packages have no line to rewrite).
 #
 # When it does rewrite it, it uses a different resolution scope, so requirements.txt
-# ends up AHEAD of uv.lock. Measured on PR #66: uv.lock advanced 4 packages
-# (beautifulsoup4, openai, pillow, playwright) while requirements.txt advanced 16.
-# The CI "requirements.txt <-> uv.lock sync" guard flags the mismatch. Refresh
-# before merging with:
-#   scripts/relock.sh <package> [<package> ...]
+# ends up AHEAD of uv.lock, and the CI "requirements.txt <-> uv.lock sync" guard fails.
+# This is SYSTEMATIC, not occasional: measured on PR #66 (uv.lock advanced 4 packages,
+# requirements.txt advanced 16) and reproduced identically after a `@dependabot
+# recreate` on PR #70. Expect every production-group PR to arrive with the guard red.
+#
+# Refresh before merging by naming the TRANSITIVES the guard's diff lists — NOT the
+# direct dependencies the PR bumps:
+#   scripts/relock.sh <transitive> [<transitive> ...]
+#
+# Naming a direct dependency overshoots the PR. `uv lock --upgrade-package` resolves
+# to the LATEST version the constraint allows, not to the version the PR declares:
+# measured on PR #70, naming `openai playwright` moved them to 2.52.0 / 1.62.0, past
+# the 2.50.0 / 1.61.0 the PR was reviewed for. See the header of scripts/relock.sh.
 #
 # Do NOT run `uv export` alone to "fix" it: the export regenerates from the lock and
-# therefore DOWNGRADES the 12 transitives dependabot advanced — including certifi,
-# the CA trust store.
+# therefore DOWNGRADES every transitive dependabot advanced — measured on PR #70,
+# 12 packages, including certifi, the CA trust store.
 version: 2
 updates:
   - package-ecosystem: "uv"

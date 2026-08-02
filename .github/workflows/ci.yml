@@ -71,7 +71,7 @@ jobs:
         run: |
           uv export --locked --format requirements-txt --no-dev --no-emit-project --no-hashes -o /tmp/requirements.expected.txt
           if ! diff -u <(grep -v '^#' /tmp/requirements.expected.txt) <(grep -v '^#' requirements.txt); then
-            echo "::error::requirements.txt is out of sync with uv.lock. Regenerate with: scripts/relock.sh (see the script header before passing package names)"
+            echo "::error::requirements.txt is out of sync with uv.lock. Fix: scripts/relock.sh <names>, passing the TRANSITIVE packages listed in the diff above, NOT the direct dependencies this PR bumps (--upgrade-package resolves to latest, which overshoots the PR). Never run 'uv export' alone: it downgrades those transitives instead. Full rationale in the scripts/relock.sh header."
             exit 1
           fi
           echo "requirements.txt is in sync with uv.lock"

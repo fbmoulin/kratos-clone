@@ -6,8 +6,22 @@
 # pyproject.toml and uv.lock; the export must then be refreshed.
 #
 # Usage:
-#   scripts/relock.sh                 # reconcile the lock with pyproject.toml
-#   scripts/relock.sh pillow openai   # additionally advance only the named packages
+#   scripts/relock.sh                      # reconcile the lock with pyproject.toml
+#   scripts/relock.sh certifi anyio ...    # additionally advance the named packages
+#
+# WHICH packages to name — measured 2026-08-02 on PR #70, and it is the opposite of
+# the obvious guess. When the CI drift guard fails on a dependabot PR, name the
+# TRANSITIVE packages the diff shows as drifted, NOT the direct dependencies the PR
+# bumps. `uv lock --upgrade-package` resolves each name to the LATEST version its
+# constraint allows, not to the version the PR declares — so naming a direct dep
+# overshoots the PR you are trying to land. Measured: naming `openai playwright` on
+# PR #70 moved them to 2.52.0 and 1.62.0, past the 2.50.0 / 1.61.0 that PR was
+# reviewed for. Copy the drifted names straight out of the guard's own diff.
+#
+# And do NOT "fix" a red guard by running `uv export` alone. It regenerates from the
+# lock, so it resolves the mismatch in the wrong direction and DOWNGRADES every
+# transitive dependabot advanced — measured on PR #70: 12 packages, `certifi` (the CA
+# trust store) among them.
 #
 # NEVER run `uv lock --upgrade` for this: it re-resolves every package in the lock
 # (measured: 24 version changes on this repo, including the mypy and ruff that gate
