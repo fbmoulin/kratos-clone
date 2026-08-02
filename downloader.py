@@ -308,7 +308,7 @@ class WebsiteDownloader:
         # declares `name: None` with no default, so omitting it matches no overload.
         # Do not "clean up" back to `find_all(attrs=...)` — mypy will fail on bs4 >=4.15.
         for elem in soup.find_all(name=None, attrs={"style": True}):
-            style = _as_str(elem["style"])
+            style = _as_str(elem.get("style"))
             if "overflow" in style.lower() and "hidden" in style.lower():
                 # Remove overflow: hidden from inline styles
                 new_style = re.sub(
@@ -1014,7 +1014,7 @@ class WebsiteDownloader:
         # 5. Process inline style attributes
         self.log("🔗 Processando atributos de estilo inline...")
         for elem in soup.find_all(name=None, attrs={"style": True}):
-            style = _as_str(elem["style"])
+            style = _as_str(elem.get("style"))
             if "url(" in style:
                 elem["style"] = self._rewrite_css_urls(style, self.base_url)
 
@@ -1049,7 +1049,7 @@ class WebsiteDownloader:
 
         # 8. Process background images in divs and other elements
         for elem in soup.find_all(name=None, attrs={"data-background": True}):
-            bg = _as_str(elem["data-background"])
+            bg = _as_str(elem.get("data-background"))
             if bg and not bg.startswith("data:"):
                 local_path = self._get_resource(bg)
                 if local_path and local_path != bg:
