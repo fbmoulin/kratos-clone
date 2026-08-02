@@ -304,7 +304,10 @@ class WebsiteDownloader:
                     del elem[attr]
 
         # 4. Remove/fix inline styles that block scroll
-        for elem in soup.find_all(attrs={"style": True}):
+        # `name=None` is required by beautifulsoup4 >=4.15: the dict-`attrs` overload
+        # declares `name: None` with no default, so omitting it matches no overload.
+        # Do not "clean up" back to `find_all(attrs=...)` — mypy will fail on bs4 >=4.15.
+        for elem in soup.find_all(name=None, attrs={"style": True}):
             style = _as_str(elem["style"])
             if "overflow" in style.lower() and "hidden" in style.lower():
                 # Remove overflow: hidden from inline styles
@@ -1010,7 +1013,7 @@ class WebsiteDownloader:
 
         # 5. Process inline style attributes
         self.log("🔗 Processando atributos de estilo inline...")
-        for elem in soup.find_all(attrs={"style": True}):
+        for elem in soup.find_all(name=None, attrs={"style": True}):
             style = _as_str(elem["style"])
             if "url(" in style:
                 elem["style"] = self._rewrite_css_urls(style, self.base_url)
@@ -1045,7 +1048,7 @@ class WebsiteDownloader:
                         meta["content"] = local_path
 
         # 8. Process background images in divs and other elements
-        for elem in soup.find_all(attrs={"data-background": True}):
+        for elem in soup.find_all(name=None, attrs={"data-background": True}):
             bg = _as_str(elem["data-background"])
             if bg and not bg.startswith("data:"):
                 local_path = self._get_resource(bg)

@@ -71,7 +71,7 @@ def _iter_asset_refs(soup: BeautifulSoup) -> Iterable[tuple[Tag, str, str]]:
     at a relative path under ``assets/``.
     """
     for attr in ("src", "href"):
-        for tag in soup.find_all(attrs={attr: True}):
+        for tag in soup.find_all(name=None, attrs={attr: True}):
             value = tag.get(attr)
             if isinstance(value, str) and value.startswith("assets/"):
                 yield tag, attr, value
