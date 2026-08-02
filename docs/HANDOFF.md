@@ -156,6 +156,41 @@ ruleset entirely, so all four checks remain advisory for that account.
 
 ---
 
+## Proving which build is answering — `/health` `build_sha`
+
+`GET /health` returns `build_sha`. A 200 alone proves a process is alive, not that it
+runs the commit you believe you deployed: an image can be rebuilt under the same tag,
+`docker compose up -d` declines to re-pull when the tag already exists locally, and a
+failed deploy leaves the previous release serving. All keep answering 200 from stale
+code. Read `build_sha`, never the image tag or a version string — a stale image under a
+fresh tag makes label and code lie in the same direction.
+
+Resolution order, first non-blank wins (`app.py:_resolve_build_sha`):
+
+1. `KC_BUILD_SHA` — injected by our `Dockerfile` from the `GIT_SHA` build arg
+2. `RENDER_GIT_COMMIT` — injected by Render at runtime
+3. `RAILWAY_GIT_COMMIT_SHA` — injected by Railway at runtime
+4. `"unknown"` — nothing resolved
+
+**`"unknown"` is a finding, not a default.** It means the running process cannot identify
+its own commit, so no measurement taken against that instance is trustworthy.
+
+**Build the image so the field is populated:**
+
+```bash
+docker build --build-arg GIT_SHA="$(git rev-parse HEAD)" -t kratos-clone .
+```
+
+Measured 2026-08-02: omitting `--build-arg` sets `KC_BUILD_SHA` to the **empty string**,
+not to an unset variable — which is why the resolver treats blank as unresolved and falls
+through. A runtime `-e KC_BUILD_SHA=...` overrides the baked value without a rebuild.
+
+The value is read per request, never cached at import: a cached value would describe the
+build that imported the module, which is the same stale-label bug the field exists to
+detect. `tests/test_health_build_sha.py` pins all of the above.
+
+---
+
 ## Architecture key facts
 
 ### Two coexisting capture paths

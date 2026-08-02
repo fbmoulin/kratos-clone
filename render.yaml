@@ -6,6 +6,11 @@ services:
     envVars:
       - key: PORT
         value: 8080
+      # Build identity for /health. Render injects RENDER_GIT_COMMIT into the runtime
+      # environment and app.py reads it, so nothing needs to be declared here for the
+      # Render path. Set KC_BUILD_SHA explicitly only if that stops being true — it
+      # takes priority, and /health reports "unknown" when neither resolves, which is
+      # the signal that the deployed commit cannot be identified.
       # Serialize headless-Chromium screenshot renders (preview modal). Each
       # render peaks ~150-300 MB; the app default is 2 (~600 MB peak), which
       # OOM-kills a 512 MB instance (Render Free/Starter). 1 keeps peak ~300 MB.
