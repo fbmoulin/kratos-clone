@@ -7,6 +7,68 @@ group, with the `0.x` series reflecting pre-1.0 status.
 
 ---
 
+## [Unreleased] — 2026-08-02: CI made reproducible and enforcing
+
+### Fixed
+- **`mypy` was red on `main` from 2026-06-29 to 2026-08-02** and every PR opened in that
+  window inherited the failure while staying mergeable. beautifulsoup4 4.15 declares
+  `name: None` with no default on the overload that takes `attrs` as a dict, so
+  `find_all(attrs={...})` matched no variant. Fixed at 5 call sites by passing
+  `name=None` **by keyword** (bs4 removed a positional parameter in a minor release, so
+  binding by name is the safer coupling). Verified green under both 4.14.3 and 4.15.0.
+- **The `requirements.txt ⇄ uv.lock` guard did not check what its comment claimed.** A
+  bare `uv export` silently re-locks on a pyproject/lock mismatch and exports the *fresh*
+  resolution, so the diff compared against a network resolution rather than the committed
+  lock. Fixed with `--locked`. Separately, nothing in CI detected pyproject↔lock drift at
+  all; added `uv lock --check`, the only command that does.
+- Three `_as_str(elem["KEY"])` reads in `downloader.py` now use `.get()`. Presence was
+  guaranteed only by the `find_all` filter on the line above, and `Tag.__getitem__` raises
+  rather than returning `None`, so mypy could not see the coupling — widening the filter
+  later would have raised `KeyError` on the live download path with CI still green.
+
+### Changed
+- **Seven CI jobs pinned to `uv.lock`** (`lint`, `smoke`, `pytest`, `render-live`,
+  `pip-audit`, `mypy`, `bandit`) via `astral-sh/setup-uv` + `uv sync --locked --group dev`,
+  with `uv run --frozen` on every execution line. Each previously installed unpinned latest
+  from PyPI, so a green run described whatever PyPI served that morning. `uv` pinned to
+  0.12.1, re-verified against the four behaviours the design rests on before pinning.
+  `actions/setup-python` dropped (`setup-uv` provisions the interpreter from
+  `.python-version`); dead `cache: pip` keys removed.
+- `astral-sh/setup-uv` pinned to a **commit SHA**, not a tag, so a re-pointed tag cannot
+  change what executes on a public repo. Partially closes the `docs/AUDIT.md` P3 on CI
+  action SHA-pinning — `actions/checkout@v7` remains on a tag.
+- `.github/dependabot.yml`'s NOTE described the behaviour backwards. Re-measured: the uv
+  ecosystem rewrites `requirements.txt` for **production**-group bumps but not development
+  ones (it is exported `--no-dev`), and leaves it AHEAD of `uv.lock`.
+
+### Added
+- **`GET /health` reports `build_sha`.** A 200 proved a process was alive, not which commit
+  it served. Resolution order: `KC_BUILD_SHA` (Dockerfile ARG) → `RENDER_GIT_COMMIT` →
+  `RAILWAY_GIT_COMMIT_SHA` → the literal `"unknown"`, which is a finding rather than a
+  default. Read per request, never cached at import. 13 tests.
+- **`scripts/relock.sh`** as the single implementation of the requirements-regeneration
+  command, which previously lived in two places that disagreed. Rejects package names
+  absent from `uv.lock` — measured: `uv lock --upgrade-package` exits 0 on an unknown name,
+  so a typo produced a successful run and an empty diff.
+- **Non-blocking `forward-compat` canary.** Pinning removed the only thing exercising newer
+  releases; this job resolves latest-from-PyPI and type-checks. Proven not decorative:
+  reverting the bs4 fix at one call site makes it fail with `[call-overload]`.
+- `tests/test_bs4_attr_filter.py` (8 tests) pinning bs4's attribute-presence contract.
+
+### Security
+- **Pillow 12.2.0 → 12.3.0**, closing **26 advisories**. `pip-audit` on `main` now reports
+  `No known vulnerabilities found`. Repository `vulnerability-alerts` and
+  `automated-security-fixes` enabled — the `security` group in `dependabot.yml` had never
+  fired because the two are separate endpoints.
+- Ruleset `Protect main` now requires **4** status checks (was 2): `mypy` and `pytest`
+  added. `strict_required_status_checks_policy` deliberately left `false`.
+- Dependency bumps: beautifulsoup4 4.15.0, openai 2.50.0, playwright 1.61.0, certifi
+  2026.7.22, plus dev-group mypy 2.3.0 and ruff 0.16.0.
+
+Test suite 337 → **358 passed, 3 skipped**.
+
+---
+
 ## [Unreleased] — WIP on `feat/personalize-preview-modal` branch
 
 ### In progress

@@ -1,5 +1,15 @@
 # Handoff — kratos-clone (2026-04-27)
 
+> ### 📍 Looking for the CURRENT session handoff? It is not this file.
+>
+> **`docs/handoff/2026-08-02-ci-unblock.md`** — plus its resumption prompt at
+> `docs/handoff/2026-08-02-ci-unblock-prompt.md`. Start there.
+>
+> This file is a **standing project reference**, kept current for the sections it
+> owns (CI pipeline, required checks, `/health` build identity, branch protection,
+> conventions). It is *not* a session log, and its 2026-04-27 title reflects when it
+> was first written, not how fresh its contents are.
+
 > Snapshot for the next Claude Code session (or any new contributor) joining
 > after a `/clear`. Tells you exactly what's done, what's next, and how to
 > pick up without re-reading the full conversation history.
