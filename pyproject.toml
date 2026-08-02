@@ -22,11 +22,21 @@ dependencies = [
 dev = [
     "bandit>=1.9.4",
     "mypy>=1.20.2",
+    "pip-audit>=2.9",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.15.12",
     "types-requests>=2.32",
 ]
+
+[tool.uv]
+# CI installs with `uv sync --locked`, which must NOT attempt to build this project.
+# The modules are top-level (app.py, downloader.py) and the distribution name
+# `10-website-downloader` is not a valid module name, so a build backend cannot infer
+# what to ship. Today uv infers non-package status from the ABSENT [build-system]
+# table; stating it explicitly means adding [build-system] later cannot silently break
+# all seven pinned CI jobs at their install step.
+package = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
