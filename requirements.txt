@@ -69,7 +69,7 @@ packaging==26.2
     # via
     #   gunicorn
     #   limits
-pillow==12.2.0
+pillow==12.3.0
     # via 10-website-downloader
 playwright==1.60.0
     # via 10-website-downloader
