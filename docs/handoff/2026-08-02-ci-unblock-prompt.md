@@ -1,4 +1,4 @@
-# Resumption prompt — kratos-clone, post CI unblock (2026-08-02)
+# Resumption prompt — kratos-clone, post CI unblock (updated 2026-08-03)
 
 > Paste the block below into a fresh session. It is self-contained: it depends on nothing
 > from the conversation that produced it.
@@ -9,100 +9,54 @@
 Leia primeiro: /home/fbmoulin/Website-Downloader/docs/handoff/2026-08-02-ci-unblock.md
 
 Projeto: fbmoulin/kratos-clone (clonador de sites SPA, Flask + Playwright, repo PÚBLICO).
-Checkout local: ~/Website-Downloader, branch main.
+Checkout local: ~/Website-Downloader.
 
-ANTES DE QUALQUER COISA, RE-MEÇA — os números abaixo são de 2026-08-02 ~06:55 -03 e
-envelhecem sozinhos. Trate cada um como pista datada, não como fato:
+ANTES DE QUALQUER COISA, RE-MEÇA — os números abaixo são de 2026-08-03 e envelhecem
+sozinhos. Trate cada um como pista datada, não como fato:
 
   git -C ~/Website-Downloader status -sb && git -C ~/Website-Downloader log --oneline -5
   gh pr list -R fbmoulin/kratos-clone
   cd ~/Website-Downloader && uv sync --locked --group dev && uv run --frozen pytest -q
 
-Estado medido em 2026-08-03 ~23:25: main em c692e8c, árvore limpa (só AGENTS.md untracked),
-358 passed / 3 skipped, mypy strict limpo, CI 10/10 verde (o 10º job é novo:
-"docker image build + smoke", ~1m4s), 0 alertas, 2 PRs abertos (#74 structlog 25.5→26.1
-que é MAJOR, #75 types-requests do grupo dev).
+Estado medido em 2026-08-03: 358 passed / 3 skipped, mypy strict limpo (21 arquivos),
+ruff limpo, bandit MEDIUM-gate exit 0, uv lock --check limpo. main estava em aeaec50
+antes do trabalho do dia.
 
-▶ SUA TAREFA É O PASSO 2 DE 2: remover o requirements.txt commitado.
-  Plano APROVADO: docs/superpowers/plans/2026-08-02-drop-requirements-txt.md
-  LEIA O CABEÇALHO DELE PRIMEIRO — carrega a comparação medida entre as duas opções e 3
-  achados de pre-mortem que precisam ser honrados.
+✅ A MUDANÇA DE DOIS PASSOS ESTÁ COMPLETA. Não a refaça.
+   Passo 1 (PR #76, mergeado): job de CI "docker image build + smoke".
+   Passo 2 (2026-08-03): requirements.txt DELETADO; o contêiner instala do uv.lock via
+   `uv sync --locked --no-dev` em /app/.venv. scripts/relock.sh também foi deletado.
+   Registro de execução no topo de docs/superpowers/plans/2026-08-02-drop-requirements-txt.md
+   — inclui o que divergiu do plano e um número que NÃO reproduziu.
 
-  O passo 1 já está MERGEADO (PR #76): o CI ganhou um job que constrói a imagem Docker e
-  faz smoke. Antes dele, NADA no pipeline construía o contêiner — mudança no Dockerfile
-  tinha zero cobertura. Esse job é a rede de segurança do passo 2; quando você reescrever
-  o Dockerfile, é ele que vai te dizer.
+🔴 SE O PASSO 2 AINDA NÃO ESTIVER NO REMOTE: ele exige AUTORIZAÇÃO EXPLÍCITA do Felipe
+   para push. O diff toca .github/workflows/, .github/dependabot.yml e o Dockerfile de
+   produção — faixa 🔴 pelas duas regras (CI/manifests, e muda como a imagem de produção
+   é construída). Branch + PR, nunca direto na main.
 
-  Forma do passo 2, tudo medido:
-  - .dockerignore EXCLUI o uv.lock hoje (verificado: `COPY uv.lock` falha com "excluded by
-    .dockerignore"). Uma linha tem de sair.
-  - entrypoint.sh chama `gunicorn` PELADO. O uv sync o põe em /app/.venv/bin, então
-    ENV PATH="/app/.venv/bin:$PATH" é obrigatório — sem isso a imagem constrói VERDE e o
-    contêiner morre ao subir.
-  - `uv sync --locked --no-dev` e o requirements.txt instalam os MESMOS 42 pacotes no Linux
-    (a única diferença aparente, colorama, tem marcador sys_platform=='win32', então o pip
-    também o pula). Equivalência já provada no nível do venv.
-  - 🔴 A edição do .dockerignore, a reescrita do Dockerfile e a deleção têm de entrar NUM
-    COMMIT SÓ. Render E Railway constroem do mesmo Dockerfile (confirmado na doc do Render
-    e no RAILWAY_DEPLOY.md deste repo) ⇒ qualquer estado intermediário quebra o deploy
-    seguinte com erro de COPY. NÃO "landar as partes seguras primeiro".
-
-🔴 ARMADILHA RECORRENTE — o PR de `pydantic-core`. O #73 JÁ FOI FECHADO pelo Felipe, mas
-ELE VOLTA. Quando voltar (1 arquivo, requirements.txt, +1/-1 — parece inofensivo):
-NÃO MERGEIE. Sobe pydantic-core para 2.47.0 sem tocar o uv.lock, mas o pydantic 2.13.4
-declara pydantic-core==2.46.4 como pin EXATO ⇒ `pip install -r` dá ResolutionImpossible e
-o build do Docker quebra. NÃO É TEÓRICO: o PR #43, com assinatura IDÊNTICA, foi MERGEADO e
-quebrou o build; o #48 consertou. Já apareceu 4× (#43 merged, #53, #73, e a próxima).
-⚠️ Fechar NÃO impede o retorno — o próprio dependabot avisa isso no PR.
-❌ NÃO tente "subir o pydantic p/ puxar um core compatível": MEDIDO, não funciona —
-   2.13.4 é a ÚLTIMA release e é ela que pina o core em 2.46.4.
-❌ NÃO use scripts/relock.sh: não há drift a reconciliar, o estado pedido é INALCANÇÁVEL.
-❌ NÃO ponha `ignore` amplo no pydantic-core: `ignore` também suprime SECURITY updates
-   (confirmado na doc do GitHub) ⇒ criaria ponto cego permanente para CVE.
-✅ Saídas boas: (a) apagar o requirements.txt e o Dockerfile instalar do uv.lock — é a
-   causa raiz (artefato gerado que PARECE manifesto) e era o 1º item dos "Known deferrals"
-   do plano; (b) não fazer nada e fechar quando aparecer — a guarda pega sempre.
-ℹ️ Sem pressa de segurança: 0 advisories em pydantic/pydantic-core, pip-audit limpo.
-#74 (structlog 25.5→26.1, MAJOR) e #75 (types-requests, dev) estavam CLEAN, 9/9 verdes.
-
-DECISÕES DO PASSO 2 — JÁ FECHADAS, NÃO REABRIR:
-
-- Opção A (uv sync → /app/.venv) foi escolhida sobre a Opção B (uv export → pip). As duas
-  matam o bug igual. A decisão foi por MEDIÇÃO, construindo as duas: A = 364 MB e construiu
-  de PRIMEIRA; B = 391 MB e falhou 3 VEZES seguidas em timeout do PyPI. Descartado junto:
-  manter o pip na imagem e não mexer no entrypoint.sh (vantagens reais, mas perdem).
-- O job de CI foi como PR SEPARADO e PRIMEIRO, de propósito: para se provar contra o
-  Dockerfile conhecido-bom antes de julgar o novo.
-- ⛔ NUNCA pôr `ignore:` no dependabot.yml para isto — `ignore` também suprime SECURITY
-  updates (confirmado na doc do GitHub; este repo não usa target-branch). Seria ponto cego
-  permanente de CVE. Descartado junto: esperar correção upstream (#2883 aberto desde 2023).
-- O job docker NÃO é required check ainda (é o mais lento) e também NÃO é
-  continue-on-error: ele falha visivelmente, só não bloqueia. Reavaliar depois de algumas
-  rodadas.
-
-⚠️ NÃO TENTE `docker run <imagem> pip freeze` como prova de equivalência — o venv do uv NÃO
-   TEM pip (medido). Use importlib.metadata, que enumera os 42.
-⚠️ Se o build local falhar com ReadTimeoutError do files.pythonhosted.org, é a REDE, não o
-   Dockerfile: 6 falhas seguidas de pip numa noite, inclusive contra a main intocada,
-   enquanto a via uv passou de primeira. Os runners do GitHub constroem em ~1m4s.
-
-▶ Fora isso, nada bloqueia neste repo.
+▶ PRÓXIMAS AÇÕES NESTE REPO, em ordem:
+  1. #74 (structlog 25.5→26.1, MAJOR) e #75 (types-requests, dev) — os dois estavam
+     MERGEABLE/CLEAN. ⚠️ #74 é do grupo de PRODUÇÃO e toca o requirements.txt que não
+     existe mais ⇒ ao rebasear vai dar conflito modify/delete. RESOLVA COMO DELETE.
+     #75 é do grupo dev e não sofre isso.
+  2. render.yaml não tem healthCheckPath — o Render promove por checagem de socket TCP,
+     então o /health (e o build_sha que ele agora reporta) NÃO participa do portão de
+     deploy. Isso vale mais agora do que quando foi anotado, porque a construção da
+     imagem mudou.
+  3. ci.yml não tem paths-ignore — todo push doc-only paga ~1 min de build de contêiner.
+  4. Ampliar o escopo do ruff para personalize/ e tests/ (ambos limpos hoje).
+  5. Apagar as 4 branches remotas já mergeadas. ⚠️ `git branch -r` lê CACHE local —
+     rode `git fetch --prune` ou `git ls-remote --heads origin` ANTES de afirmar o que
+     existe lá (já errei 8/8 assim uma vez).
 
 ▶ O MAIOR ITEM VIVO ESTÁ FORA DESTE REPO: PII dentro dos arquivos de memória do Claude
 Code (~/.claude/projects/*/memory/). Medido em 02/08: 8 arquivos com número CNJ real; um
 deles tem tabela de 6 processos do TJES com NOME COMPLETO DAS PARTES, placas, valores e a
 decisão recomendada; outro identifica uma CRIANÇA DE 6 ANOS com TEA/TDAH pelo nome.
 Nunca foram varridos porque `projects/` sempre esteve no .gitignore, logo nunca foi repo.
-🔴 A API key do Qdrant Cloud foi REDIGIDA mas NÃO ROTACIONADA — só o Felipe faz isso
-(dashboard do Qdrant: criar nova → atualizar consumidores → revogar a velha).
-Detalhe e comandos:
+🔴 A API key do Qdrant Cloud foi REDIGIDA mas NÃO ROTACIONADA — só o Felipe faz isso.
+Detalhe:
 ~/.claude/projects/-home-fbmoulin/memory/reference_pii-inside-the-memory-files-2026-08-02.md
-
-Opcionais neste repo, em ordem: (1) ampliar o escopo do ruff para personalize/ e tests/
-(ambos limpos hoje — mudar duas linhas `run:` do job lint deve passar de primeira);
-(2) apagar as 4 branches remotas já mergeadas (fix/bs4-find_all-overloads,
-ci/pin-jobs-to-lockfile, feat/health-build-sha, docs/relock-name-transitives-not-directs);
-(3) zero métricas/tracing; (4) actions/checkout@v7 ainda em tag mutável. Tudo em TODO.md.
 
 DECISÕES JÁ FECHADAS — NÃO REABRIR (repetidas aqui porque link não é lido):
 
@@ -110,51 +64,56 @@ DECISÕES JÁ FECHADAS — NÃO REABRIR (repetidas aqui porque link não é lido
    bs4 removeu um parâmetro posicional numa release menor.
 2. O dicionário do filtro fica como literal inline. Extrair para variável é REJEITADO pelo
    mypy nas duas versões da bs4 (_StrainableAttributes é um Dict invariante).
-3. tests/test_bs4_attr_filter.py é fixação de CONTRATO, não detector de reversão — não
-   importa downloader.py e a distinção name=None é invisível em runtime. Quem pega reversão
-   é o job forward-compat. Não "reforce" o teste.
+3. tests/test_bs4_attr_filter.py é fixação de CONTRATO, não detector de reversão. Quem
+   pega reversão é o job forward-compat. Não "reforce" o teste.
 4. uv sync --locked (NUNCA --frozen) nas linhas de install: --frozen sai 0 quando
    pyproject e lock divergem e instala a versão errada.
 5. uv run --frozen em TODA linha de execução: uv run pelado reescreve o uv.lock no meio do
-   job.
-6. UV_FROZEN nunca no nível do workflow — é mutuamente exclusivo com --locked (exit 2).
-7. uv pinado em 0.12.1 (medido, não o fallback 0.10.12). setup-uv pinado por SHA, não tag.
-8. strict_required_status_checks_policy fica FALSE de propósito — ligar obriga rebase de
-   todo PR aberto do dependabot a cada push na main. Decisão do Felipe.
-9. /health devolve a string literal "unknown" quando não resolve o SHA; nunca omite a
-   chave, nunca devolve "" ou null. Valor em branco cai para a próxima fonte. Lido a cada
-   requisição, nunca cacheado no import.
-10. Todo merge com --rebase, nunca squash.
-11. NÃO versionar ~/.claude/projects/*/memory/ enquanto houver a PII acima. A regra
-    `projects/` no .gitignore está certa pelo alvo real: 1.221 transcripts .jsonl contêm
-    CNJ (1,8 GB). Quando limpar, des-ignorar só */memory/ com pii-sweep como pre-commit.
-
-JÁ TENTADO E DESCARTADO — não repita:
-
-- "@dependabot rebase" e "@dependabot recreate" NÃO consertam a divergência da guarda
-  requirements.txt ⇄ uv.lock. O recreate reproduziu a mesma lacuna de 12 pacotes. É
-  comportamento sistemático do ecossistema uv do dependabot.
-- scripts/relock.sh com os pacotes DIRETOS faz overshoot: --upgrade-package resolve para a
-  ÚLTIMA versão permitida, não a do PR. Nomeie os TRANSITIVOS que o diff da guarda lista.
-  (O header do script e o dependabot.yml já dizem isso desde o PR #72.)
-- "uv export" sozinho para consertar a guarda REBAIXA 12 transitivos, certifi incluído.
+   job. UV_FROZEN nunca no nível do workflow — mutuamente exclusivo com --locked (exit 2).
+6. uv pinado em 0.12.1. setup-uv pinado por SHA. A imagem do uv no Dockerfile é pinada
+   pelo digest do ÍNDICE multi-arch (sha256:cf4eedca…), não por tag nem por digest de
+   arquitetura — o de índice funciona em amd64 e arm64.
+7. strict_required_status_checks_policy fica FALSE de propósito. Decisão do Felipe.
+8. /health devolve a string literal "unknown" quando não resolve o SHA; nunca omite a
+   chave, nunca devolve "" ou null. Lido a cada requisição, nunca cacheado no import.
+9. Todo merge com --rebase, nunca squash.
+10. Opção A (uv sync) foi escolhida sobre B (uv export → pip) por MEDIÇÃO. Não reabra.
+11. ⛔ NUNCA `ignore:` no dependabot.yml — suprime SECURITY updates também (este repo não
+    usa target-branch). Upstream dependabot-core#13912 e #2883 ABERTOS; não há ignore por
+    arquivo, e linguist-generated não tem efeito.
+12. 🔴 NÃO reintroduza requirements.txt. A nota no topo do .github/dependabot.yml explica
+    por quê e é o lugar onde essa decisão mora.
+13. NÃO versionar ~/.claude/projects/*/memory/ enquanto houver a PII acima.
 
 ARMADILHAS ATIVAS:
 
 - 🔴 Renomear o job de mypy QUEBRA a main. O name: declarado tem 114 chars; o GitHub trunca
   nomes de check-run em 98. O contexto do ruleset é a string TRUNCADA. Contexto que não casa
   não dá erro — cria um required check que nunca chega e todo PR bloqueia para sempre.
+  (Renomear o job de lock-sync foi seguro porque ele NÃO é required — verificado no ruleset
+  15582219 ANTES de renomear. Faça a mesma verificação antes de renomear qualquer job.)
 - 🔴 AGENTS.md é untracked em cópia única. NUNCA `git add -A` ou `git add .` neste checkout.
-- ⚠️ Todo PR de produção do dependabot chega com a guarda de drift vermelha. É esperado.
-- ⚠️ bandit imprime "High: 10" na coluna de CONFIANÇA, não de severidade (exit 0).
+- 🔴 `docker exec <c> pip install X` é NO-OP SILENCIOSO na imagem nova — MEDIDO: sai 0, imprime
+  mensagem normal, e a app não enxerga o pacote (pip resolve para /usr/local/bin/pip, python
+  resolve para /app/.venv/bin/python). Forma correta, TESTADA no mesmo contêiner:
+  `docker exec <c> uv pip install --python /app/.venv/bin/python X`.
+- 🔴 A NOTIFICAÇÃO de tarefa em background do Claude Code MENTE sobre exit code — reportou 0
+  para três builds que saíram 1, 2 e 1. Encadeie `; echo "EXIT=$?"` e leia isso. E `docker run`
+  numa imagem que nunca foi construída falha com "pull access denied", que PARECE problema de
+  credencial e não é.
+- ⚠️ Build local de Docker falha por REDE, não pelo Dockerfile: 6× ReadTimeoutError do
+  files.pythonhosted.org (via pip, inclusive contra a main intocada) e 2× ECONNRESET do
+  cdn.playwright.dev baixando o Chromium (via uv). Discriminador: erro de DOWNLOAD ⇒ rede,
+  siga; ResolutionImpossible, erro de COPY ou falha de apt ⇒ real, pare. Os runners do
+  GitHub constroem em ~1m4s — deixe o CI construir.
+- ⚠️ bandit imprime "High: N" na coluna de CONFIANÇA, não de severidade (exit 0). O portão
+  do CI é --severity-level medium; leia a linha "by severity".
 - ⚠️ No Bash do Claude Code, grep e find são funções-sombra com heap do V8 — já travaram
   este WSL duas vezes. Use `command grep -r` ou `rg` em busca recursiva.
 - ⚠️ downloader.py é legado do upstream e está FORA do escopo do ruff no CI de propósito.
-- ⚠️ Diretórios em ~/.claude/projects/ começam com "-", então `cp ./"$d"/*.md` precisa do
-  ./ — sem ele o cp lê o caminho como flag e falha em silêncio.
+- ⚠️ O builder Docker local é o LEGADO (sem BuildKit) — não aceita --progress. E `ls -l`
+  dentro de sonda não mostra dotfiles: use `ls -la`, senão .python-version "some".
 
 ⛔ NÃO EXECUTE ~/claudedocs/kratos-clone-audit-2026-08-01/PLAN-unblock-ci-2026-08-02.md nem
-o PROMPT-RETOMADA-2026-08-02.md daquele diretório. Ambos foram CUMPRIDOS em 02/08. A cópia
-do plano no repo (docs/superpowers/plans/) traz no topo a tabela das 5 verificações dele
-que a execução refutou — leia essa tabela antes de reaproveitar qualquer sonda de lá.
+o PROMPT-RETOMADA-2026-08-02.md daquele diretório. Ambos foram CUMPRIDOS em 02/08.
 ```

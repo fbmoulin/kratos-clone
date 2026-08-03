@@ -40,6 +40,58 @@ group, with the `0.x` series reflecting pre-1.0 status.
   set succeeded first try. The follow-up (removing `requirements.txt`) makes this moot rather
   than patching it — plan at `docs/superpowers/plans/2026-08-02-drop-requirements-txt.md`.
 
+### Removed
+- **`requirements.txt` is gone; the container installs from `uv.lock` directly.** It was
+  generated from the lock but nothing about it said so, so Dependabot treated it as a
+  hand-maintained manifest and edited single lines with no awareness of what the lock could
+  satisfy. The identical `pydantic-core` one-liner appeared **four times** (#43, #48, #53,
+  #73); **#43 was merged** — a `+1/-1` diff invites a merge without reading — and produced a
+  `requirements.txt` where `pydantic==2.13.4` (which hard-pins `pydantic-core==2.46.4`) sat
+  beside `pydantic-core==2.47.0`. `pip install -r` returns `ResolutionImpossible`; the Docker
+  build broke. Retiring the `pip` ecosystem for `uv` did not close the class — #73 arrived
+  *through* the uv ecosystem.
+
+  Upstream has no fix and no workaround: `dependabot-core#13912` (uv PRs editing
+  `requirements*.txt` without the lock) and `#2883` ("ignore a specific manifest", open since
+  2023) are both open, and `linguist-generated` has no effect. An `ignore:` rule was rejected
+  rather than deferred: GitHub's options reference marks `ignore` as also suppressing
+  **security** updates where no `target-branch` is set, so it would have created a permanent
+  silent CVE blind spot in a Rust-backed validation core.
+
+  Removed with it: `scripts/relock.sh` (its only purpose was regenerating the export) and the
+  export/diff half of the CI drift guard.
+
+### Changed
+- **`Dockerfile` installs via `uv sync --locked --no-dev` into `/app/.venv`**, with the `uv`
+  binary copied from `ghcr.io/astral-sh/uv` pinned **by multi-arch index digest**, not by tag
+  — same reasoning as the SHA-pinned `setup-uv` in CI. Chosen over the alternative
+  (`uv export | pip install`, which keeps `pip` in the image) on measured evidence, by
+  building both: **364 MB vs 391 MB**, and the `uv` path built first try while the `pip` path
+  failed three consecutive times on `files.pythonhosted.org` timeouts.
+
+  Package-set equivalence was proven before the switch, not assumed: a parallel venv built
+  with `uv sync --locked --no-dev` matched `requirements.txt` at **42 packages**, the sole
+  apparent difference (`colorama`) being `sys_platform == 'win32'`-gated and therefore skipped
+  by `pip` on Linux too.
+
+  🔴 `ENV PATH="/app/.venv/bin:$PATH"` is load-bearing: `entrypoint.sh` invokes **bare**
+  `gunicorn`, so without it the image builds green and the container dies on start. The
+  `docker image build + smoke` job added one PR earlier is exactly what proves this.
+
+  🔴 Operator consequence: **`docker exec <c> pip install X` is now a silent no-op** — `pip`
+  resolves to the system `/usr/local/bin/pip` while `python` resolves to
+  `/app/.venv/bin/python`, so the package lands where the app never reads it, and the command
+  still prints success. Use `uv pip install --python /app/.venv/bin/python X`.
+- **`build.sh` rewritten to `uv sync`.** It has no live consumer — both documented deploy
+  paths (Render `env: docker`, Railway per `RAILWAY_DEPLOY.md`) build from the `Dockerfile`,
+  and Render's docs state the build command cannot be customised. Updated anyway, because a
+  script that installs from a deleted file is a trap for whoever runs it next.
+- **CI job `requirements.txt ⇄ uv.lock sync` → `uv.lock ⇄ pyproject.toml sync`.** It keeps
+  `uv lock --check`, which is still the only command that detects pyproject↔lock drift
+  (`uv sync --frozen` exits 0 on it). Renaming was safe because this job is **not** one of the
+  four required contexts — verified against ruleset `15582219` before the rename, since a
+  required context that never arrives blocks every PR forever.
+
 ---
 
 ## [Unreleased] — 2026-08-02: CI made reproducible and enforcing

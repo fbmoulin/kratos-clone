@@ -129,7 +129,9 @@ gh run list --limit 5
 > with separate severity scale: both BLOCKERs fixed in PR #21 + the urllib3
 > CVE within M-3 also bumped there. M-3 cryptography portion closed
 > transitively by PR #38 (openai 2.32 → 2.38 dropped cryptography from the
-> dep closure; `pip-audit -r requirements.txt` reports 0 vulns). M-4
+> dep closure; `pip-audit -r requirements.txt` reports 0 vulns — historical
+> command, `requirements.txt` was removed 2026-08-03; the CI job now runs
+> `uv sync --locked --group dev` then `pip-audit` against the synced venv). M-4
 > closed by boot-time `rate_limit_storage_misconfigured` warning + WEB_CONCURRENCY
 > propagation in entrypoint.sh. M-5 Playwright Chrome-for-Testing partially
 > mitigated by launch-arg constant in `kratos_clone/capture.py` (CfT

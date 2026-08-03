@@ -48,5 +48,16 @@ downloads/*
 *.md
 !README.md
 
-# UV lock file (not needed in container)
-uv.lock
+# uv.lock is NOT excluded — it is the container's install source.
+#
+# It used to be excluded (upstream 082c96b, "not needed in container"), which was
+# true while the image installed from a committed requirements.txt. That premise is
+# gone: the Dockerfile now runs `uv sync --locked`, which reads this file. Excluding
+# it again fails the build with
+#   COPY failed: ... excluded by .dockerignore: stat uv.lock
+#
+# Two invariants that keep the build correct, both easy to break by accident:
+#   1. `.venv` above must STAY excluded. The build creates /app/.venv and then runs
+#      `COPY . .` over /app; a host .venv in the context would overwrite it.
+#   2. The `uv sync` must stay BEFORE `COPY . .`, so the dependency layer caches
+#      independently of source changes.
