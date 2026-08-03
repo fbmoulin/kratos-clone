@@ -323,6 +323,11 @@ jobs:
         run: docker run --rm kratos-clone:ci sh -c 'command -v gunicorn && gunicorn --version'
 
       - name: Container serves /health with the build SHA it was built from
+        # Note on what `github.sha` is here: on a pull_request event it is the EPHEMERAL
+        # MERGE COMMIT (head merged into base), not the PR head — so the build_sha this
+        # step prints will not exist in permanent history. That is expected, and the
+        # assertion is still sound because both sides read the same value. On a push to
+        # main, `github.sha` is the real commit and the reported build_sha is meaningful.
         run: |
           docker run --rm -d -p 8099:8080 --name kc-ci kratos-clone:ci
           for i in $(seq 1 30); do
