@@ -66,6 +66,21 @@ Long-tail candidates:
   sentry / datadog / statsd. Observability today is structured logs (`structlog`),
   `/health` (now with `build_sha`), `/api/client-errors` and the browser logger. Adequate
   for the current size; noted so the absence is a decision rather than an oversight.
+- **🔴 NEXT: remove the committed `requirements.txt`** — approved 2026-08-03, plan at
+  `docs/superpowers/plans/2026-08-02-drop-requirements-txt.md`. Step 1 of 2 is done (the
+  `docker image build + smoke` job, PR #76). Step 2 rewrites the `Dockerfile` to install
+  from `uv.lock`. This closes the recurring dependabot bug that has produced the identical
+  `pydantic-core` PR **four times** (#43 merged and broke the Docker build; #48 fixed it;
+  #53, #73 closed). Upstream `dependabot-core#13912` and `#2883` are both open — there is
+  no configuration workaround.
+- **`render.yaml` has no `healthCheckPath`** — found 2026-08-03 by an adversarial review
+  lens. Render promotes a deploy on a TCP socket check, so the `/health` endpoint (and the
+  `build_sha` it now reports) does not participate in the deploy gate. Adding
+  `healthCheckPath: /health` would make it participate.
+- **`docker exec … pip install` silently no-ops after step 2 lands** — measured in the
+  built image: `pip` resolves to the system interpreter while the app runs from
+  `/app/.venv`. The correct form will be `uv pip install --python /app/.venv/bin/python`.
+  Documented in the plan; must reach `docs/HANDOFF.md` when step 2 ships.
 
 _All "Later" items shipped as of 2026-05-10. New work is tracked directly in
 `docs/AUDIT.md` (~13 P3 long-tail) or surfaces via CodeRabbit/audit review._

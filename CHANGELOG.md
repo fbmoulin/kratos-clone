@@ -7,6 +7,41 @@ group, with the `0.x` series reflecting pre-1.0 status.
 
 ---
 
+## [Unreleased] — 2026-08-03: the container is finally tested
+
+### Added
+- **`docker image build + smoke` CI job.** Nothing in this pipeline had ever built the
+  container. Every job installed dependencies its own way (`uv sync` into a runner venv),
+  so the `Dockerfile` — the thing production runs — was verified by nobody. Confirmed by
+  reading all 9 jobs: zero occurrences of `docker build`. Two independent adversarial
+  review lenses rated the gap HIGH.
+
+  The job builds the real image and asserts four things a green `pytest` cannot: it builds;
+  `import app` works *inside* it; `gunicorn` resolves on PATH (`entrypoint.sh` invokes it
+  bare, so any install-layout change that moves it would still build green and die on
+  container start); and `/health` reports the `build_sha` it was built from, exercising the
+  `GIT_SHA` ARG wiring nothing else touches.
+
+  The `build_sha` assertion was sabotage-tested before committing — it fails on a mismatched
+  SHA and on a response missing the field. Deliberately **not** a required status check yet
+  (slowest job here), but **not** `continue-on-error` either: it fails visibly.
+
+  Not hypothetical. PR #43 merged a one-line `requirements.txt` edit that made
+  `pip install -r` unresolvable; CI was green and it surfaced at deploy time. PR #48 fixed it.
+
+### Notes
+- On a `pull_request` event `github.sha` is the ephemeral **merge commit**, so the
+  `build_sha` the job prints on a PR run does not exist in permanent history. Measured and
+  documented in the job. On a push to `main` it is the real commit — verified: `main` at
+  `c692e8c` reported `build_sha: c692e8c9…`.
+- The current `Dockerfile` has no `--retries`/`--timeout` on its `pip install`. Six
+  consecutive local builds failed with `ReadTimeoutError` from `files.pythonhosted.org`,
+  including two against the unmodified `main`. A `uv`-based install of the identical package
+  set succeeded first try. The follow-up (removing `requirements.txt`) makes this moot rather
+  than patching it — plan at `docs/superpowers/plans/2026-08-02-drop-requirements-txt.md`.
+
+---
+
 ## [Unreleased] — 2026-08-02: CI made reproducible and enforcing
 
 ### Fixed

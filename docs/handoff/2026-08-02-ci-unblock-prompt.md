@@ -18,9 +18,34 @@ envelhecem sozinhos. Trate cada um como pista datada, não como fato:
   gh pr list -R fbmoulin/kratos-clone
   cd ~/Website-Downloader && uv sync --locked --group dev && uv run --frozen pytest -q
 
-Estado medido em 2026-08-02 ~07:00: main em bf85066, árvore limpa (só AGENTS.md untracked),
-358 passed / 3 skipped, mypy strict limpo, CI 9/9 verde, pip-audit sem vulnerabilidades,
-0 alertas do dependabot, 3 PRs abertos (#73, #74, #75 — dependabot, abertos 09:55 UTC).
+Estado medido em 2026-08-03 ~23:25: main em c692e8c, árvore limpa (só AGENTS.md untracked),
+358 passed / 3 skipped, mypy strict limpo, CI 10/10 verde (o 10º job é novo:
+"docker image build + smoke", ~1m4s), 0 alertas, 2 PRs abertos (#74 structlog 25.5→26.1
+que é MAJOR, #75 types-requests do grupo dev).
+
+▶ SUA TAREFA É O PASSO 2 DE 2: remover o requirements.txt commitado.
+  Plano APROVADO: docs/superpowers/plans/2026-08-02-drop-requirements-txt.md
+  LEIA O CABEÇALHO DELE PRIMEIRO — carrega a comparação medida entre as duas opções e 3
+  achados de pre-mortem que precisam ser honrados.
+
+  O passo 1 já está MERGEADO (PR #76): o CI ganhou um job que constrói a imagem Docker e
+  faz smoke. Antes dele, NADA no pipeline construía o contêiner — mudança no Dockerfile
+  tinha zero cobertura. Esse job é a rede de segurança do passo 2; quando você reescrever
+  o Dockerfile, é ele que vai te dizer.
+
+  Forma do passo 2, tudo medido:
+  - .dockerignore EXCLUI o uv.lock hoje (verificado: `COPY uv.lock` falha com "excluded by
+    .dockerignore"). Uma linha tem de sair.
+  - entrypoint.sh chama `gunicorn` PELADO. O uv sync o põe em /app/.venv/bin, então
+    ENV PATH="/app/.venv/bin:$PATH" é obrigatório — sem isso a imagem constrói VERDE e o
+    contêiner morre ao subir.
+  - `uv sync --locked --no-dev` e o requirements.txt instalam os MESMOS 42 pacotes no Linux
+    (a única diferença aparente, colorama, tem marcador sys_platform=='win32', então o pip
+    também o pula). Equivalência já provada no nível do venv.
+  - 🔴 A edição do .dockerignore, a reescrita do Dockerfile e a deleção têm de entrar NUM
+    COMMIT SÓ. Render E Railway constroem do mesmo Dockerfile (confirmado na doc do Render
+    e no RAILWAY_DEPLOY.md deste repo) ⇒ qualquer estado intermediário quebra o deploy
+    seguinte com erro de COPY. NÃO "landar as partes seguras primeiro".
 
 🔴 ARMADILHA RECORRENTE — o PR de `pydantic-core`. O #73 JÁ FOI FECHADO pelo Felipe, mas
 ELE VOLTA. Quando voltar (1 arquivo, requirements.txt, +1/-1 — parece inofensivo):
@@ -40,7 +65,28 @@ quebrou o build; o #48 consertou. Já apareceu 4× (#43 merged, #53, #73, e a pr
 ℹ️ Sem pressa de segurança: 0 advisories em pydantic/pydantic-core, pip-audit limpo.
 #74 (structlog 25.5→26.1, MAJOR) e #75 (types-requests, dev) estavam CLEAN, 9/9 verdes.
 
-▶ O trabalho de CI terminou e está mergeado. Fora o #73, nada bloqueia neste repo.
+DECISÕES DO PASSO 2 — JÁ FECHADAS, NÃO REABRIR:
+
+- Opção A (uv sync → /app/.venv) foi escolhida sobre a Opção B (uv export → pip). As duas
+  matam o bug igual. A decisão foi por MEDIÇÃO, construindo as duas: A = 364 MB e construiu
+  de PRIMEIRA; B = 391 MB e falhou 3 VEZES seguidas em timeout do PyPI. Descartado junto:
+  manter o pip na imagem e não mexer no entrypoint.sh (vantagens reais, mas perdem).
+- O job de CI foi como PR SEPARADO e PRIMEIRO, de propósito: para se provar contra o
+  Dockerfile conhecido-bom antes de julgar o novo.
+- ⛔ NUNCA pôr `ignore:` no dependabot.yml para isto — `ignore` também suprime SECURITY
+  updates (confirmado na doc do GitHub; este repo não usa target-branch). Seria ponto cego
+  permanente de CVE. Descartado junto: esperar correção upstream (#2883 aberto desde 2023).
+- O job docker NÃO é required check ainda (é o mais lento) e também NÃO é
+  continue-on-error: ele falha visivelmente, só não bloqueia. Reavaliar depois de algumas
+  rodadas.
+
+⚠️ NÃO TENTE `docker run <imagem> pip freeze` como prova de equivalência — o venv do uv NÃO
+   TEM pip (medido). Use importlib.metadata, que enumera os 42.
+⚠️ Se o build local falhar com ReadTimeoutError do files.pythonhosted.org, é a REDE, não o
+   Dockerfile: 6 falhas seguidas de pip numa noite, inclusive contra a main intocada,
+   enquanto a via uv passou de primeira. Os runners do GitHub constroem em ~1m4s.
+
+▶ Fora isso, nada bloqueia neste repo.
 
 ▶ O MAIOR ITEM VIVO ESTÁ FORA DESTE REPO: PII dentro dos arquivos de memória do Claude
 Code (~/.claude/projects/*/memory/). Medido em 02/08: 8 arquivos com número CNJ real; um

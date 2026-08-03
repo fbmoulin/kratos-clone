@@ -1,23 +1,29 @@
-# HANDOFF — kratos-clone, CI unblock + dependency reconciliation (2026-08-02)
+# HANDOFF — kratos-clone, CI unblock → container now tested (2026-08-02 / 03)
 
 > Context was cleared. This file is the source. Everything below was measured, except
 > where explicitly marked as an assumption.
+>
+> **▶ The next task is step 2 of a two-step change: remove the committed
+> `requirements.txt`.** Step 1 is done and merged. The plan is at
+> `docs/superpowers/plans/2026-08-02-drop-requirements-txt.md` and it is approved —
+> read its header first, it carries the decision rationale and the pre-mortem findings.
 
 ## State
 
 - **Repo / branch:** `/home/fbmoulin/Website-Downloader` @ `main` (default branch is `main`)
-- **HEAD:** `6cf6cb6` · working tree: clean except one untracked file (`AGENTS.md`,
+- **HEAD:** `c692e8c` · working tree: clean except one untracked file (`AGENTS.md`,
   deliberate — see traps) · remote: in sync, 0 unpushed
 - **Tests:** **358 passed, 3 skipped** — I ran `uv run --frozen pytest -q` on `main` at
-  `dfff995`. mypy strict: `Success: no issues found in 21 source files`.
-- **CI:** all 9 jobs green on `main`, 7–12 steps each (step counts checked — a job
+  `c692e8c`. mypy strict: `Success: no issues found in 21 source files`.
+- **CI:** **10 jobs**, all green on `main`, 7–12 steps each (step counts checked — a job
   finishing in seconds with *zero* steps is a runner/billing start-up failure, not a test
-  failure).
+  failure). The 10th is new: `docker image build + smoke`, ~1m4s.
 - **Security:** `pip-audit` on `main` reports `No known vulnerabilities found`; 0 open
   dependabot alerts (was 26 Pillow advisories).
-- **Open PRs:** **3, all opened by dependabot at 09:55–09:56 UTC**, minutes after this
-  session's merges updated the dependency graph. See the next section — **#73 must not be
-  merged as it stands.**
+- **Open PRs:** **2** — #74 (`structlog` 25.5→26.1, a **major** bump) and #75
+  (`types-requests`, dev group). Both were `MERGEABLE/CLEAN` 9/9 when last measured, before
+  the 10th job existed; **re-measure**. #73 was closed by Felipe — see the recurring-trap
+  section below, it comes back.
 - **Deploy:** `render.yaml` exists. Whether the Render service is actually connected and
   auto-deploying **was not measured** — I have no Render credentials. Treat a merge to
   `main` as possibly triggering a deploy.
@@ -81,6 +87,29 @@
 - **Every PR merged with `--rebase`, never squash.** The ruleset allows both; squash would
   collapse commits that were split specifically to be independently revertible.
 
+**Removing `requirements.txt` — decided 2026-08-03**
+
+- **Option A (`uv sync` into `/app/.venv`) over Option B (`uv export` piped into `pip`).**
+  Both kill the bug identically — neither leaves a committed file for dependabot to edit.
+  Chosen on measured evidence, by building both: A is **364 MB vs 391 MB**, and A **built
+  first try** while B **failed three consecutive times** on `files.pythonhosted.org`
+  timeouts. Discarded with B: keeping `pip` in the image and leaving `entrypoint.sh`
+  untouched — real advantages, outweighed by the install-time fragility.
+- **The CI docker-build job ships FIRST, as its own PR.** Two adversarial lenses disagreed
+  about which option was worse and both were right for their own lens; the disagreement
+  pointed at a third thing neither covered — *nothing built the image*. Landing the job
+  first lets it prove itself against the known-good Dockerfile before it has to judge the
+  new one. Discarded: one combined PR, which would have created the job and the change it
+  guards in the same commit.
+- **No `ignore:` rule in `dependabot.yml`, ever, for this.** Confirmed from GitHub's options
+  reference that `ignore` also suppresses **security** updates (this repo sets no
+  `target-branch`). A blanket ignore on `pydantic-core` would be a permanent silent CVE
+  blind spot in a Rust-backed validation core. Discarded along with it: waiting for an
+  upstream fix — `dependabot-core#2883` has been open since 2023.
+- **The docker job is not a required status check yet, and not `continue-on-error` either.**
+  It fails visibly but does not gate, because it is the slowest job and should prove
+  stability first. Revisit after a few runs.
+
 ## ❌ Tried and discarded
 
 - **`@dependabot rebase`, then `@dependabot recreate`, to fix the drift guard on #66/#70.**
@@ -95,6 +124,18 @@
   that teach this.
 - **`uv export` alone to reconcile a red guard** → resolves the mismatch in the wrong
   direction and **downgrades 12 transitives**, `certifi` (the CA trust store) among them.
+- **`docker run <image> pip freeze` as the equivalence proof.** It was written into the
+  removal plan and **does not work**: the venv `uv sync` creates contains **no `pip`**
+  (measured — `/app/.venv/bin` has `python`, `gunicorn`, `playwright`, no `pip`). It would
+  have errored mid-execution and could easily have been misread as an image problem. The
+  working substitute is `importlib.metadata`, verified to enumerate all 42. Independently
+  corroborated afterwards from Astral's own docs.
+- **Building the image locally, tonight.** Six consecutive `pip install` runs failed with
+  `ReadTimeoutError` from `files.pythonhosted.org` — including two against the **unmodified
+  Dockerfile already on `main`**. The uv-based install of the identical package set
+  succeeded first try under the same conditions. Do not read this as "the Dockerfile is
+  broken"; read it as "pip has no retry hardening here and this network is flaky". GitHub's
+  runners build it in ~1m4s.
 - **The plan's own probes.** Three were unusable as written and each failed in the direction
   that *looks like a valid measurement*: `str.replace()` is a silent no-op when its target is
   absent (one probe printed its own expected success line without running the experiment);
@@ -204,12 +245,34 @@ The other two are clean and were not merged only because this session was wrappi
   version bump; the suite passing is evidence but read the changelog.
 - **#75** — `types-requests`, dev group, `MERGEABLE/CLEAN`, 9/9 green.
 
-## ▶ Next concrete action
+## ▶ Next concrete action — step 2: remove the committed `requirements.txt`
 
-Nothing in the CI work is blocking — it is finished and merged, and `main` is green. What
-follows is in the order I would take it:
+**Approved 2026-08-03. Plan: `docs/superpowers/plans/2026-08-02-drop-requirements-txt.md`.**
+Read its header before touching anything — it carries the decision rationale, the measured
+A-vs-B comparison, and three pre-mortem findings that must be honoured.
 
-0. **Deal with #73 (above).** It is the only item with a wrong-if-ignored outcome.
+Step 1 is **done and merged** (PR #76): CI now has a `docker image build + smoke` job. That
+job is the safety net for step 2 — before it, a Dockerfile change had zero automated
+coverage. When you rewrite the Dockerfile, *that job is the thing that will tell you*.
+
+The shape of step 2, all measured:
+- `.dockerignore` currently excludes `uv.lock` (verified empirically: `COPY uv.lock` fails
+  with "excluded by .dockerignore"). One line has to go.
+- `entrypoint.sh` calls **bare `gunicorn`**. `uv sync` puts it in `/app/.venv/bin`, so
+  `ENV PATH="/app/.venv/bin:$PATH"` is mandatory — without it the image builds green and
+  the container dies on start.
+- `uv sync --locked --no-dev` and `requirements.txt` install an **identical 42-package set**
+  on Linux (the only apparent difference, `colorama`, is `sys_platform == 'win32'`-gated, so
+  pip skips it too). Equivalence is already proven at the venv level.
+- 🔴 **The `.dockerignore` edit, the Dockerfile rewrite and the deletion must land in ONE
+  commit.** Render *and* Railway both build from this Dockerfile (confirmed from Render's
+  docs and this repo's `RAILWAY_DEPLOY.md`), so any intermediate state fails the next deploy
+  with a `COPY` error. Do not "land the safe parts first".
+
+Then, in order and not blocking:
+
+0. **The `pydantic-core` PR will come back.** See the recurring-trap section — it is the one
+   item with a wrong-if-ignored outcome.
 
 1. **Redact the PII sitting in the Claude Code memory files.** This is the largest live
    finding and it is *outside* this repo — see "Outside this repo" below. It is not
