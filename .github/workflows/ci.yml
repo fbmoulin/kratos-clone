@@ -289,3 +289,55 @@ jobs:
             --with urllib3 --with flask --with flask-limiter --with gunicorn \
             --with psutil --with structlog \
             mypy --config-file pyproject.toml
+
+  docker-build:
+    # Nothing else in this pipeline builds the container. Every other job installs
+    # dependencies its own way (uv sync into a runner venv), so the Dockerfile — the
+    # thing production actually runs — was verified by nobody. That gap is not
+    # hypothetical: PR #43 merged a one-line requirements.txt edit that made
+    # `pip install -r` unresolvable, and the break surfaced at deploy time.
+    #
+    # This job builds the real image and proves three things a green pytest cannot:
+    # the build succeeds, the app imports inside the image, and gunicorn resolves on
+    # PATH for the bare invocation entrypoint.sh uses.
+    #
+    # Deliberately NOT a required status check yet: it is the slowest job here
+    # (Chromium download) and should prove itself stable before it can block a merge.
+    name: docker image build + smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the production image
+        # GIT_SHA is what /health reports as build_sha. Passing it here also proves the
+        # ARG is wired, which no other job checks.
+        run: docker build --build-arg GIT_SHA="${{ github.sha }}" -t kratos-clone:ci .
+
+      - name: App imports inside the image
+        run: docker run --rm kratos-clone:ci python -c "import app; print('import ok')"
+
+      - name: gunicorn resolves on PATH
+        # entrypoint.sh calls bare `gunicorn`. If an install-layout change ever moves it
+        # (e.g. into a virtualenv) without a matching PATH update, the image still builds
+        # green and the container dies on start. This is the step that catches that.
+        run: docker run --rm kratos-clone:ci sh -c 'command -v gunicorn && gunicorn --version'
+
+      - name: Container serves /health with the build SHA it was built from
+        run: |
+          docker run --rm -d -p 8099:8080 --name kc-ci kratos-clone:ci
+          for i in $(seq 1 30); do
+            if curl -sf localhost:8099/health > /tmp/health.json; then break; fi
+            sleep 2
+          done
+          docker logs kc-ci
+          docker rm -f kc-ci
+          cat /tmp/health.json
+          python3 -c "
+          import json, sys
+          h = json.load(open('/tmp/health.json'))
+          print('health:', h)
+          assert h.get('status') == 'ok', h
+          got, want = h.get('build_sha'), '${{ github.sha }}'
+          assert got == want, f'build_sha mismatch: image reports {got!r}, expected {want!r}'
+          print('build_sha matches the commit the image was built from')
+          "
