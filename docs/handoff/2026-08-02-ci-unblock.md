@@ -248,10 +248,25 @@ lock-pinned transitive, dependabot edits `requirements.txt` *alone*, producing a
 ⛔ **Not recommended: a blanket `ignore` on `pydantic-core`.** The security blind spot is
 permanent and silent; the noise it removes is neither.
 
-The other two are clean and were not merged only because this session was wrapping up:
-- **#74** — `structlog` 25.5.0 → 26.1.0, `MERGEABLE/CLEAN`, 9/9 green. Note it is a **major**
-  version bump; the suite passing is evidence but read the changelog.
-- **#75** — `types-requests`, dev group, `MERGEABLE/CLEAN`, 9/9 green.
+✅ **Both merged 2026-08-03**, after `requirements.txt` was removed:
+- **#74** — `structlog` 25.5.0 → 26.1.0 (a **major** bump). Its checks had re-run against the
+  post-removal `main` — recognisable by the renamed lock-sync job and the presence of
+  `docker image build + smoke`, 10/10 — so the container was proven to build and serve with
+  the new major before merging.
+- **#75** — `types-requests`, dev group. ⚠️ Its green was **stale**: 9 checks, and the guard
+  still under its *old* name, meaning CI had run against the pre-removal `main`. Re-triggered
+  with `@dependabot rebase` (`gh pr update-branch` does not exist in this `gh` build), which
+  produced a fresh 10/10 against the current `main` before merging.
+
+❌ **Correction to an earlier draft of this file's successor prompt.** It predicted #74 would
+hit a modify/delete conflict because production-group bumps rewrite `requirements.txt`.
+**Measured: false.** #74's diff was `pyproject.toml` + `uv.lock` only, and it merged CLEAN.
+
+✅ **The fix is confirmed under real conditions.** Under an hour after #77 landed, Dependabot
+opened **#78 — production group — touching only `pyproject.toml` and `uv.lock`, lock guard
+green.** This file previously recorded "expect *every* production-group PR to arrive with the
+drift guard red; this is systematic" (measured on #66, reproduced identically after a
+`@dependabot recreate` on #70). That class of bug is gone rather than muted.
 
 ## ✅ Step 2 is DONE — `requirements.txt` removed, container installs from `uv.lock`
 
@@ -348,9 +363,10 @@ Detail, and the commands that re-find all of it:
   `gh api repos/fbmoulin/kratos-clone/commits/main/check-runs -q '.check_runs[] | "\(.name|length)|\(.name)"'`
 - 🔴 **`AGENTS.md` is untracked and exists in a single copy. NEVER `git add -A` or
   `git add .` in this checkout.** Stage explicitly, path by path.
-- ⚠️ **Every production-group dependabot PR will arrive with the drift guard red.** This is
-  systematic, not a glitch. Fix by naming the **transitives** the guard's diff lists — not
-  the direct deps the PR bumps. `scripts/relock.sh`'s header explains why (after #72 lands).
+- ✅ ~~Every production-group dependabot PR will arrive with the drift guard red.~~ **No
+  longer true as of 2026-08-03** — that was a consequence of `requirements.txt` existing, and
+  it does not. Confirmed on #78 (production group, guard green). `scripts/relock.sh` is
+  deleted; if you find advice pointing at it, that advice is stale.
 - ⚠️ **`bandit` prints `High: 10` under CONFIDENCE, not Severity.** The Severity row reads
   `Low: 10, Medium: 0, High: 0`, exit 0. Read the right column before diagnosing.
 - ⚠️ **In Claude Code's Bash tool, `grep` and `find` are shadow functions** running the

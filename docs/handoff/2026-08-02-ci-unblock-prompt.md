@@ -34,11 +34,21 @@ antes do trabalho do dia.
    produção — faixa 🔴 pelas duas regras (CI/manifests, e muda como a imagem de produção
    é construída). Branch + PR, nunca direto na main.
 
+✅ #74 (structlog 25.5→26.1, MAJOR) e #75 (types-requests) MERGEADOS em 03/08.
+   ❌ CORREÇÃO — uma versão anterior deste prompt previa que o #74 daria conflito
+      modify/delete por tocar o requirements.txt deletado. MEDIDO: FALSO. O diff dele
+      era só pyproject.toml + uv.lock; mergeou CLEAN. A nota do dependabot.yml que dizia
+      que bumps de produção reescrevem o requirements.txt não valia para este PR.
+
+✅ O FIX ESTÁ CONFIRMADO EM CONDIÇÕES REAIS. Menos de 1h depois do #77, o dependabot
+   abriu o #78 — grupo de PRODUÇÃO — tocando SÓ pyproject.toml + uv.lock, com o guarda
+   de lock VERDE. Antes disto, este handoff registrava "espere TODO PR de produção
+   chegar com a guarda vermelha; é sistemático" (medido no #66, reproduzido no #70).
+   A classe de bug acabou, não foi silenciada.
+
 ▶ PRÓXIMAS AÇÕES NESTE REPO, em ordem:
-  1. #74 (structlog 25.5→26.1, MAJOR) e #75 (types-requests, dev) — os dois estavam
-     MERGEABLE/CLEAN. ⚠️ #74 é do grupo de PRODUÇÃO e toca o requirements.txt que não
-     existe mais ⇒ ao rebasear vai dar conflito modify/delete. RESOLVA COMO DELETE.
-     #75 é do grupo dev e não sofre isso.
+  1. PRs abertos do dependabot (#78 openai 2.50→2.51 produção, #79 ruff 0.16.0→0.16.1
+     dev, ambos de 03/08). Sem armadilha conhecida — leia os 10 jobs mesmo assim.
   2. render.yaml não tem healthCheckPath — o Render promove por checagem de socket TCP,
      então o /health (e o build_sha que ele agora reporta) NÃO participa do portão de
      deploy. Isso vale mais agora do que quando foi anotado, porque a construção da
