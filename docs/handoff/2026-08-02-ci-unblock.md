@@ -11,8 +11,9 @@
 ## State
 
 - **Repo / branch:** `/home/fbmoulin/Website-Downloader` @ `main` (default branch is `main`)
-- **HEAD:** `c692e8c` · working tree: clean except one untracked file (`AGENTS.md`,
-  deliberate — see traps) · remote: in sync, 0 unpushed
+- **HEAD:** `aeaec50` at the start of the 2026-08-03 session · working tree: clean except one
+  untracked file (`AGENTS.md`, deliberate — see traps) · remote: in sync, 0 unpushed
+  ⚠️ Re-measure. This line is a dated clue, not a fact.
 - **Tests:** **358 passed, 3 skipped** — I ran `uv run --frozen pytest -q` on `main` at
   `c692e8c`. mypy strict: `Success: no issues found in 21 source files`.
 - **CI:** **10 jobs**, all green on `main`, 7–12 steps each (step counts checked — a job
@@ -144,10 +145,17 @@
   drift a later `uv lock --check` was meant to detect. Corrections are recorded at the top of
   `docs/superpowers/plans/2026-08-02-unblock-ci.md`.
 
-## 🔴 The `pydantic-core` PR is a RECURRING trap — it has already been merged once
+## ✅ The `pydantic-core` recurring trap — CLOSED 2026-08-03 by deleting `requirements.txt`
 
-**Status: #73 was closed by Felipe at 09:59Z. It will come back.** Researched 2026-08-02
-07:15; this section supersedes an earlier draft that proposed a fix which does not exist.
+> **This section is now history, kept because it is the evidence behind the fix.** The bug
+> needed a committed `requirements.txt` for Dependabot to edit; there is no longer one. Option
+> 1 in "The options, ranked" below is what shipped. If a `pydantic-core` PR appears again it
+> will have to touch `pyproject.toml` + `uv.lock` through uv's own resolver, which cannot
+> produce the unsatisfiable pair described here.
+
+**Status when written: #73 was closed by Felipe at 09:59Z, and it would have come back.**
+Researched 2026-08-02 07:15; this section supersedes an earlier draft that proposed a fix
+which does not exist.
 
 This is the failure the drift guard was built for, and it is not new. The same PR has now
 appeared **four times**:
@@ -245,29 +253,52 @@ The other two are clean and were not merged only because this session was wrappi
   version bump; the suite passing is evidence but read the changelog.
 - **#75** — `types-requests`, dev group, `MERGEABLE/CLEAN`, 9/9 green.
 
-## ▶ Next concrete action — step 2: remove the committed `requirements.txt`
+## ✅ Step 2 is DONE — `requirements.txt` removed, container installs from `uv.lock`
 
-**Approved 2026-08-03. Plan: `docs/superpowers/plans/2026-08-02-drop-requirements-txt.md`.**
-Read its header before touching anything — it carries the decision rationale, the measured
-A-vs-B comparison, and three pre-mortem findings that must be honoured.
+**Executed 2026-08-03**, per `docs/superpowers/plans/2026-08-02-drop-requirements-txt.md`.
+Both steps of the two-step change have now landed. What shipped:
 
-Step 1 is **done and merged** (PR #76): CI now has a `docker image build + smoke` job. That
-job is the safety net for step 2 — before it, a Dockerfile change had zero automated
-coverage. When you rewrite the Dockerfile, *that job is the thing that will tell you*.
+- `.dockerignore` no longer excludes `uv.lock` (it is the install source now). Two invariants
+  are commented in the file: `.venv` stays excluded, and the sync stays before `COPY . .`.
+- `Dockerfile` runs `uv sync --locked --no-dev` into `/app/.venv`, with the `uv` binary copied
+  from `ghcr.io/astral-sh/uv` **pinned by multi-arch index digest** (`sha256:cf4eedca…`), not
+  by tag. `ENV UV_PYTHON_DOWNLOADS=never` forces the base image's interpreter rather than a
+  uv-managed download, so the container runs the same CPython the CI matrix validates.
+- 🔴 `ENV PATH="/app/.venv/bin:$PATH"` — load-bearing, because `entrypoint.sh` invokes bare
+  `gunicorn`.
+- `requirements.txt` and `scripts/relock.sh` deleted; the CI guard renamed to
+  `uv.lock ⇄ pyproject.toml sync`, keeping only `uv lock --check`.
+- `build.sh` rewritten to `uv sync` (dead code on both documented deploy paths, updated anyway
+  so it does not become a trap).
 
-The shape of step 2, all measured:
-- `.dockerignore` currently excludes `uv.lock` (verified empirically: `COPY uv.lock` fails
-  with "excluded by .dockerignore"). One line has to go.
-- `entrypoint.sh` calls **bare `gunicorn`**. `uv sync` puts it in `/app/.venv/bin`, so
-  `ENV PATH="/app/.venv/bin:$PATH"` is mandatory — without it the image builds green and
-  the container dies on start.
-- `uv sync --locked --no-dev` and `requirements.txt` install an **identical 42-package set**
-  on Linux (the only apparent difference, `colorama`, is `sys_platform == 'win32'`-gated, so
-  pip skips it too). Equivalence is already proven at the venv level.
-- 🔴 **The `.dockerignore` edit, the Dockerfile rewrite and the deletion must land in ONE
-  commit.** Render *and* Railway both build from this Dockerfile (confirmed from Render's
-  docs and this repo's `RAILWAY_DEPLOY.md`), so any intermediate state fails the next deploy
-  with a `COPY` error. Do not "land the safe parts first".
+### 🔴 Operator consequence that did not exist before
+
+**`docker exec <c> pip install X` is now a silent no-op.** `pip` resolves to the system
+`/usr/local/bin/pip` while `python` resolves to `/app/.venv/bin/python`, so the package
+installs where the app never reads it — and the command still prints success. Correct form:
+
+```bash
+docker exec <c> uv pip install --python /app/.venv/bin/python X
+```
+
+Related, for whoever optimises the image later: `/app/.venv/bin/python` is a **symlink** to
+`/usr/local/bin/python3.12`. It works because the target lives in the same image. A
+multi-stage build copying only `/app/.venv` into a different final stage yields a dangling
+symlink unless that stage uses the same base image.
+
+### ⚠️ Local Docker builds keep failing on the network — that is not this repo
+
+Measured across two nights, now **8 failures**: the `pip` path failed 6× with
+`ReadTimeoutError` from `files.pythonhosted.org` (two of them against the *unmodified*
+`Dockerfile` on `main`), and the new `uv` path reached `playwright install` and failed with
+`ECONNRESET` pulling Chrome for Testing from Google's CDN. The discriminator that matters:
+`ReadTimeoutError` / `ECONNRESET` on a download ⇒ network, retry or let CI build it.
+`ResolutionImpossible`, a `COPY` error, or an apt failure ⇒ real, stop.
+
+⚠️ **The Claude Code background-task notification reported `exit code 0` for two builds that
+actually exited 1 and 2.** Chain an `echo "EXIT=$?"` into the command and read that, not the
+notification. A follow-up `docker run` on the missing image then fails with *"pull access
+denied"*, which reads like a credentials problem and is not.
 
 Then, in order and not blocking:
 

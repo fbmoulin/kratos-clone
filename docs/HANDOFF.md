@@ -133,8 +133,17 @@ uv run pytest tests/test_post.py -v  # specific file
 - `mypy (…)` — added 2026-08-02
 - `pytest (kratos_clone + post + client_errors)` — added 2026-08-02
 
-`bandit`, `pip-audit`, `render-live`, `requirements.txt ⇄ uv.lock sync` and the `forward-compat`
-canary run on every PR but gate nothing. Until 2026-08-02 only the first two were required, which
+`bandit`, `pip-audit`, `render-live`, `uv.lock ⇄ pyproject.toml sync`, `docker image build +
+smoke` and the `forward-compat` canary run on every PR but gate nothing. (The lock-sync job was
+called `requirements.txt ⇄ uv.lock sync` until 2026-08-03; renaming it was safe precisely
+because it is not a required context — a required context that never arrives blocks every PR
+forever, which is why the `mypy` job's name must NOT be touched without updating the ruleset.)
+
+**The container installs from `uv.lock`, not from a committed `requirements.txt`** (removed
+2026-08-03). The `Dockerfile` runs `uv sync --locked --no-dev` into `/app/.venv` and puts that
+venv on `PATH`. Operator consequence: `docker exec <c> pip install X` is a silent no-op, because
+`pip` still resolves to the system Python while `python` resolves to the venv. Use
+`docker exec <c> uv pip install --python /app/.venv/bin/python X`. Until 2026-08-02 only the first two were required, which
 is why `mypy` could stay red on `main` from 2026-06-29 onward while every PR opened in that window
 inherited the failure and remained mergeable.
 

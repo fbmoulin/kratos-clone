@@ -3,39 +3,32 @@
 # PR per package). Security updates are a separate group so they can be
 # fast-tracked.
 #
-# Python ecosystem is "uv" (NOT "pip"). uv.lock is the source of truth and
-# requirements.txt is GENERATED from it (for the Docker/pip deploy). The "pip"
-# ecosystem edited requirements.txt line-by-line with no awareness of uv.lock
-# or of exact-pin constraints, twice producing an inconsistent pair
-# (pydantic 2.13.4 hard-pins pydantic-core==2.46.4, but pip-dependabot bumped
-# pydantic-core to 2.47.0 alone) -> `pip install -r requirements.txt`
-# ResolutionImpossible -> broken Docker build (see PR #48, #49, #51). The "uv"
-# ecosystem updates pyproject.toml + uv.lock via uv's resolver, so it stays
-# internally consistent and never touches requirements.txt.
+# Python ecosystem is "uv" (NOT "pip"). uv.lock is the only dependency source of
+# truth in this repo, and the Docker image installs from it directly via
+# `uv sync --locked`.
 #
-# NOTE: dependabot's uv ecosystem updates pyproject.toml AND uv.lock. Whether it
-# also rewrites requirements.txt depends on the group: production bumps do (the
-# packages appear there), development bumps do not (requirements.txt is exported
-# --no-dev, so dev packages have no line to rewrite).
+# 🔴 DO NOT REINTRODUCE requirements.txt. It was deleted 2026-08-03, and the reason is
+# the whole point of this note.
 #
-# When it does rewrite it, it uses a different resolution scope, so requirements.txt
-# ends up AHEAD of uv.lock, and the CI "requirements.txt <-> uv.lock sync" guard fails.
-# This is SYSTEMATIC, not occasional: measured on PR #66 (uv.lock advanced 4 packages,
-# requirements.txt advanced 16) and reproduced identically after a `@dependabot
-# recreate` on PR #70. Expect every production-group PR to arrive with the guard red.
+# It was a file GENERATED from uv.lock, but nothing about it said so: to dependabot it
+# looked like a hand-maintained manifest, so it edited single lines in it with no
+# awareness of what the lock could satisfy. The same one-line pydantic-core bump
+# appeared FOUR times (#43, #48, #53, #73). #43 was merged — a +1/-1 diff invites a
+# merge without reading — and it broke the Docker build: pydantic 2.13.4 hard-pins
+# pydantic-core==2.46.4, so a requirements.txt carrying 2.47.0 alongside it is
+# unsatisfiable and `pip install -r` returned ResolutionImpossible. #48 was the fix.
 #
-# Refresh before merging by naming the TRANSITIVES the guard's diff lists — NOT the
-# direct dependencies the PR bumps:
-#   scripts/relock.sh <transitive> [<transitive> ...]
+# Retiring the "pip" ecosystem in favour of "uv" did NOT close that class: #73 arrived
+# through the uv ecosystem (branch dependabot/uv/production-dependencies-*) and again
+# touched requirements.txt alone. Upstream knows: dependabot-core#13912 is open for
+# exactly this, and dependabot-core#2883 ("ignore a specific manifest") has been open
+# since 2023 — there is no file-level ignore, and `linguist-generated` has no effect.
 #
-# Naming a direct dependency overshoots the PR. `uv lock --upgrade-package` resolves
-# to the LATEST version the constraint allows, not to the version the PR declares:
-# measured on PR #70, naming `openai playwright` moved them to 2.52.0 / 1.62.0, past
-# the 2.50.0 / 1.61.0 the PR was reviewed for. See the header of scripts/relock.sh.
-#
-# Do NOT run `uv export` alone to "fix" it: the export regenerates from the lock and
-# therefore DOWNGRADES every transitive dependabot advanced — measured on PR #70,
-# 12 packages, including certifi, the CA trust store.
+# ⛔ And do NOT add an `ignore:` rule to silence it either. GitHub's options reference
+# marks `ignore` as also suppressing SECURITY updates where no `target-branch` is set,
+# which is the case here — so ignoring pydantic-core would create a permanent, silent
+# CVE blind spot in a Rust-backed validation core. Deleting the file removes the cause
+# instead of muting the symptom.
 version: 2
 updates:
   - package-ecosystem: "uv"

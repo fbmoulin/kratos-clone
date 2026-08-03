@@ -1,6 +1,61 @@
 # Plan — remove `requirements.txt`, install from `uv.lock`
 
-**Status: APPROVED 2026-08-03. Step 1 of 2 is DONE and merged. Step 2 is this plan.**
+**Status: EXECUTED 2026-08-03.** Both steps have landed. What follows is the plan as approved;
+this header records where execution diverged from it, since a plan that reads as if it went
+exactly as written is a plan nobody can learn from.
+
+## Execution record — what the plan said vs what happened
+
+| Plan said | What happened |
+|---|---|
+| **Task 0** — build `kc-before:baseline`, diff its package set against the new image | **Not achievable locally.** The `pip` build failed with `ReadTimeoutError` from `files.pythonhosted.org` — the **7th** such failure. Per the plan's own discriminator that is network, not a broken `main`, so execution continued. Substituted: enumerated `python:3.12-slim-bookworm` directly, which answers the same question ("what does the image provide outside the venv") — the base image ships exactly **`pip==25.0.1`**, no `setuptools`, no `wheel`. So the expected before/after delta was one line, and it is `pip`. |
+| **Task 2 verify** — build the real image, diff 42 packages, smoke `/health` | The real image **could not be built locally either**: `playwright install --with-deps chromium` failed **twice** with `ECONNRESET` from `cdn.playwright.dev`. That step is byte-identical to the one on `main`, so it discriminates nothing about this change — it only blocks the check. Substituted: a probe image generated from the real `Dockerfile` by deleting exactly that one line (`diff` asserted: 1 line). Everything the task wanted was then verified on it. |
+| `docker run <img> pip freeze` | Already corrected in the plan before execution; `importlib.metadata` used. Confirmed: the venv has no `pip`. |
+
+### What was actually measured, in the image
+
+- **42 runtime packages**, and the diff against the deleted `requirements.txt` is exactly one
+  line: `colorama==0.4.6 ; sys_platform == 'win32'`, which `pip` skips on Linux too. The
+  venv-level equivalence the plan proved is now confirmed at image level.
+- `import app` → boots. `command -v gunicorn` → `/app/.venv/bin/gunicorn`, v26.0.0. The
+  `ENV PATH` line does its job.
+- **The container serves.** `/health` returned
+  `{"status":"ok","build_sha":"aeaec5098d1f…","queues":0,"rss_mb":70.4,"sessions":0}` —
+  gunicorn started under `entrypoint.sh`'s bare invocation, which is the end-to-end proof
+  that PATH is right, and the `GIT_SHA` ARG matched `HEAD`.
+- 🔴 **The operator trap was REPRODUCED, not assumed.** Inside the running container,
+  `pip install six` exited **0** with a normal-looking notice, and `python -c "import six"`
+  then failed. The documented remedy was tested too, in the same container:
+  `uv pip install --python /app/.venv/bin/python six` → the app imports it. Both directions
+  measured, so the docs describe a remedy that was run, not one that looks right.
+- The pre-mortem's symlink finding holds: `/app/.venv/bin/python -> /usr/local/bin/python3.12`.
+- **The `pip-audit` job did not lose coverage.** Worth checking because its *meaning* could
+  have shifted underneath it without the file changing: it audits the venv from
+  `uv sync --locked --group dev`, and `requirements.txt` used to be the artifact naming what
+  shipped. Measured: that venv holds **78 packages, a strict superset of the image's 42, with
+  zero version drift**. Both this probe and the PII regex sweep were sabotage-tested — an
+  injected package and an injected CNJ each made them go red — so their clean results are
+  measurements rather than blind spots.
+
+### ⚠️ One number that did NOT reproduce
+
+The plan records Option A at **364 MB**. The probe image — which has *no* Chromium and none of
+the `--with-deps` apt libraries — already measures **447 MB**, so the full image must exceed
+both. The 364/391 pair was measured in an earlier session by a method not recorded here, and
+the two were presumably measured the same way, so the *comparison* that drove the decision is
+not disturbed. But the absolute figure should not be quoted as this image's size. Not
+reopened: the decision rested on network resilience, not on size.
+
+### ⚠️ Harness trap worth carrying forward
+
+The Claude Code background-task notification reported **`exit code 0` for three builds that
+exited 1, 2 and 1**. Only the `echo "EXIT=$?"` chained into the command told the truth. A
+follow-up `docker run` on the image that was never built then fails with *"pull access
+denied"*, which reads as a credentials problem and is not.
+
+---
+
+**Original status: APPROVED 2026-08-03. Step 1 of 2 was DONE and merged. Step 2 is this plan.**
 
 ## Read this before executing
 
