@@ -15,7 +15,7 @@
 |---|---|---|
 | 🔴 BLOCKER | 2 | **Both fixed** in PR #21. |
 | 🟡 MAJOR  | 5 | M-1, M-2 closed in follow-up docs PR. M-3 fully closed (urllib3 fixed in PR #21; cryptography dropped by PR #38 openai bump). M-4 closed (boot-time warning). M-5 partially mitigated (launch-args). |
-| 🟢 MINOR  | 9 | N-1, N-2 closed in follow-up docs PR. N-3 resolved via B-2 fix. N-4..N-9 deferred. |
+| 🟢 MINOR  | 9 | N-1, N-2 closed in follow-up docs PR. N-3 resolved via B-2 fix. N-4 partial (preview endpoint CORS/CSP, PR #45/#47; POST endpoints still uncovered). N-5..N-9 deferred. |
 
 The container deploy via Render → Docker → `requirements.txt` was broken today: `requirements.txt` was missing 4 of the 11 declared runtime dependencies, including two (`structlog`, `flask-limiter`) imported at module level in `app.py`. `import app` raised `ModuleNotFoundError` before gunicorn could bind, so the service would fail health-check before serving a single request. The second BLOCKER (no `.env.example`) meant operators had no reference for the 24 env vars the app reads, including `OPENAI_API_KEY` — which fails silently per-request, not at boot.
 
@@ -80,7 +80,7 @@ BOOT OK — 10 routes
 | ~~N-1~~ | 🟢 MINOR  | `CLAUDE.md` claims "52 tests" — actual 210 | `CLAUDE.md:70`, `pytest -q` output | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — line updated to "210 passed + 2 skipped, ~3s" |
 | ~~N-2~~ | 🟢 MINOR  | "$0.32 per run" cost claim unverified | `docs/PERSONALIZATION.md`, `docs/HANDOFF.md`, `CLAUDE.md:167` | ✅ **RESOLVED** on `docs/refresh-post-audit-2026-05-10` — annotated with 2026-04-27 live measurement (~$0.05/run text-only; $0.32 forecast assumes 3 images) |
 | N-3 | 🟢 MINOR  | 20+ `KCD_*` env vars undocumented for operators | `kratos_clone/capture.py:185-228` | **RESOLVED via B-2 fix** |
-| N-4 | 🟢 MINOR  | No CORS/CSRF on POST endpoints | `app.py` (no `flask-cors` import) | DEFERRED — intent-dependent |
+| N-4 | 🟢 MINOR  | No CORS/CSRF on POST endpoints | `app.py` (no `flask-cors` import) | **PARTIAL** — preview endpoint has explicit same-host CORS + CSP (PR #45/#47); POST endpoints still uncovered |
 | N-5 | 🟢 MINOR  | Janitor thread `daemon=True`; SIGTERM during cleanup may leak | `app.py:243` | DEFERRED — idempotent rmtree mitigates |
 | N-6 | 🟢 MINOR  | `Dockerfile` lacks `HEALTHCHECK` directive | `Dockerfile` | DEFERRED — Render uses external HTTP probe |
 | N-7 | 🟢 MINOR  | `Dockerfile` runs as root (no `USER` directive) | `Dockerfile` | DEFERRED — single-tenant container |
@@ -186,11 +186,13 @@ This file is now a build artifact — regenerable from `uv.lock` whenever deps c
 
 **Recommended follow-up:** during the next live test, compute actual per-run spend with current pricing (gpt-4.1 + image gen) and update the docs with date-stamped numbers ("as of YYYY-MM-DD"). Same doc-PR as M-1/M-2.
 
-### N-4 — No CORS/CSRF (DEFERRED)
+### N-4 — No CORS/CSRF (PARTIAL)
 
-No `flask-cors` import; no CSRF token validation on `/api/personalize/run` or `/download`. Acceptable IF the API is only called same-origin (the Flask app serves the UI HTML on `/personalize` and the form posts to `/api/personalize/run` from the same origin). NOT acceptable if the API is to be consumed from a different domain.
+No `flask-cors` import; no CSRF token validation on `/api/personalize/run`, `/api/personalize/structure`, `/api/client-errors`, or `/download`. Acceptable while the API is only called same-origin (the Flask app serves the UI HTML on `/` and `/personalize` and the forms post back to the same origin).
 
-**Recommended follow-up:** document the intent in `docs/`. If single-origin, no action. If cross-origin is on the roadmap, add `flask-cors` with explicit allowlist.
+**Partially mitigated (2026-06 preview modal work, PR #45/#47):** the new `GET /personalize/preview/<dir>/<path:asset>` route emits explicit same-host `Access-Control-Allow-Origin` (not `*`, since the iframe's opaque null origin would let widening re-open R2-PRC002); `Cache-Control: no-cache` on `.html`; content-type-aware CSP and `X-Content-Type-Options: nosniff`. This is CORS-aware serving for read-only file access, not a general-purpose flask-cors allowlist for the POST endpoints.
+
+**Still deferred:** the POST endpoints (`/api/personalize/*`, `/download`, `/api/client-errors`) have no CORS or CSRF layer. Document the same-origin intent in `docs/` and add `flask-cors` with an explicit allowlist only if a cross-origin caller becomes a real use case.
 
 ### N-5 — Janitor daemon thread (DEFERRED)
 
