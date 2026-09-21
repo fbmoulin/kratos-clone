@@ -114,7 +114,7 @@ gh run list --limit 5
 
 ### Generators (`scripts/`)
 - Currently single-script style: top-level execution at import. **Don't refactor to a library yet** unless adding tests (Phase 1) — the import-time cost is negligible and the script style is appropriate for one-shot use.
-- ⚠️ **Generators have hardcoded NexusFlow indices** — they `IndexError` on arbitrary sites. Phase 2 fixes this. Don't claim they're "site-agnostic" until then.
+- **IndexError-on-arbitrary-sites is closed** (P1-C, `find_button_by_classes` at `scripts/generate_design_system_v2.py:501`) — every `inv[…]` lookup in the generator is now defensive (`.get()`, `min()`, slicing, or the semantic class-signature helper). What remains for a truly site-agnostic run is copy hardcoding: the header title, section descriptors, and footer URL still say "NexusFlow" / `nexusflow-saas.aura.build` (~4 sites in `generate_design_system_v2.py`), and `find_button_by_classes` uses Tailwind-shape class-fragments (`gradient-to-r`, `neutral-900/`, …). Parameterize those before shipping the generator for a non-NexusFlow capture.
 
 ---
 
@@ -135,8 +135,10 @@ gh run list --limit 5
 > closed by boot-time `rate_limit_storage_misconfigured` warning + WEB_CONCURRENCY
 > propagation in entrypoint.sh. M-5 Playwright Chrome-for-Testing partially
 > mitigated by launch-arg constant in `kratos_clone/capture.py` (CfT
-> memory-reduction flags; sandbox stays on). Remaining: 6 MINOR deferred
-> (Dockerfile hardening, CORS allow-list, etc.).
+> memory-reduction flags; sandbox stays on). Remaining: N-4 partial
+> (preview endpoint CORS-aware via PR #45/#47; POST endpoints still
+> uncovered) + 5 MINOR fully deferred (Dockerfile HEALTHCHECK, Dockerfile
+> USER, janitor daemon, dead Procfile, `downloader.py` bandit exclusion).
 
 ---
 
