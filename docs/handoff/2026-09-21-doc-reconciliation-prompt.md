@@ -16,10 +16,12 @@ sozinhos. Cada um é pista datada, não fato:
   gh pr list -R fbmoulin/kratos-clone   # ou mcp__github__list_pull_requests
   cd /home/user/kratos-clone && uv sync --locked --group dev && uv run --frozen pytest -q
 
-Estado medido em 2026-09-21T09:30Z após #85+#86 mergearem:
-- main = 0a567cd (docs: reconcile generators warning + N-4 status ... #86)
-- Working tree limpo, single local branch = main
-- Nenhum PR aberto meu, nenhuma subscription ativa
+Estado medido em 2026-09-21T09:30Z após #85+#86+#87 mergearem, e depois
+atualizado por esta mesma rodada que fecha N-6+N-7 no Dockerfile:
+- main pré-este-PR = a712a0c (docs handoff #87). Após merge deste PR,
+  main = <sha do squash de N-6+N-7>. Re-meça — o número acima envelhece.
+- Working tree limpo, sem stashes.
+- Nenhum PR aberto meu, nenhuma subscription ativa (pressupondo merge feito).
 
 ✅ RECONCILIAÇÃO DOC-ONLY COMPLETA. Não a refaça.
    #85 (480e43d): substituiu a seção "Feature — feat/personalize-preview-modal branch
@@ -42,15 +44,17 @@ Estado medido em 2026-09-21T09:30Z após #85+#86 mergearem:
          em .html. NÃO é uma flask-cors allowlist geral — POST endpoints
          (/api/personalize/*, /download, /api/client-errors) continuam uncovered.
 
-📋 BACKLOG ATUAL (verificado 2026-09-21, todos ainda em main):
+📋 BACKLOG ATUAL (verificado 2026-09-21):
    ✅ Todos P1/P2 (13+12 findings) fechados
    ✅ M-1..M-5 do pre-deploy audit: fechados ou partial (M-5 launch-args)
+   ✅ N-6 (Dockerfile HEALTHCHECK) + N-7 (non-root USER) fechados no mesmo PR
+      que shipou este handoff atualizado. UID/GID 65532 (distroless nonroot
+      convention); Playwright browsers rehomed p/ /opt/ms-playwright via
+      PLAYWRIGHT_BROWSERS_PATH SET ANTES do install pra USER switch não cegar
+      o Chromium; wget --spider contra /health (wget já vinha do apt layer).
    🟡 N-4 PARTIAL: preview coberto; POST endpoints ainda sem CORS/CSRF geral
-   ⏳ N-5..N-9 (5 MINOR fully deferred), inalterados de 2026-05:
+   ⏳ N-5, N-8, N-9 (3 MINOR fully deferred), inalterados de 2026-05:
       - N-5: janitor Thread daemon=True em app.py:289 (idempotent rmtree mitiga)
-      - N-6: Dockerfile sem HEALTHCHECK (Render usa HTTP probe externa)
-      - N-7: Dockerfile roda como root (P3 tracking já anotado inline no Dockerfile
-             perto do `playwright install --with-deps chromium`)
       - N-8: Procfile dead code sob `env: docker` no render.yaml (harmless)
       - N-9: downloader.py excluído do bandit CI scope (1 High unannotated: md5
              para asset filename hashing)
@@ -61,23 +65,20 @@ Estado medido em 2026-09-21T09:30Z após #85+#86 mergearem:
       refactor (não urgente; ver PR #42 review thread #6 histórico).
 
 ▶ CANDIDATOS PRÓXIMOS, sem prioridade absoluta (perguntar ao Felipe):
-   1. Dockerfile hardening (N-6 HEALTHCHECK + N-7 USER). Combo já discutido no
-      Dockerfile comment atual — a ordem exige: `USER` DEPOIS do `playwright install
-      --with-deps chromium` (senão apt-install quebra). HEALTHCHECK é 1 linha
-      (curl -f http://localhost:$PORT/health || exit 1) mas Render mesmo assim
-      usa probe externa; ganho é local docker + defense-in-depth.
-   2. N-4 completo: flask-cors com allowlist restrita nos POST endpoints. Requer
+   1. N-4 completo: flask-cors com allowlist restrita nos POST endpoints. Requer
       decisão de política — quem consome fora do same-origin? Hoje: só o próprio
       Flask serve o formulário. Ganho = defesa se algum dia mudar.
-   3. Generator branding parameterization: dropar "NexusFlow" hardcoded (~4 sites),
+   2. Generator branding parameterization: dropar "NexusFlow" hardcoded (~4 sites),
       aceitar `--site-name` CLI arg + inferir de inv["meta"]["title"] com fallback.
       Baixo risco, doc-only-adjacent.
-   4. safe_int_env helper (extract from app.py; aplicar em kratos_clone/capture.py
+   3. safe_int_env helper (extract from app.py; aplicar em kratos_clone/capture.py
       onde vários `int(os.getenv(KCD_*))` são unguarded). Vem do backlog PR #42
       review; low priority porque KCD_* são operator-set, não platform-set.
-   5. render.yaml healthCheckPath (herdado do handoff anterior de 2026-08-03) —
-      /health hoje reporta build_sha mas não participa do portão de deploy.
-   6. ci.yml paths-ignore para docs-only pushes (~1 min por PR doc-only hoje).
+   4. render.yaml healthCheckPath (herdado do handoff anterior de 2026-08-03) —
+      /health hoje reporta build_sha E o novo HEALTHCHECK do container também
+      bate nele, mas o Render ainda promove por probe externa que não passa
+      por esse path a menos que healthCheckPath seja setado.
+   5. ci.yml paths-ignore para docs-only pushes (~1 min por PR doc-only hoje).
 
 📖 LEITURA OBRIGATÓRIA antes de tocar código:
    - /home/user/kratos-clone/CLAUDE.md (agora factualmente correto pós-#85/#86)
