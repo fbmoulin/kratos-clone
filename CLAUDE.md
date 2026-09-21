@@ -225,82 +225,64 @@ Spent ~\$0.105 for the 2 included live tests. Default `pytest -q` skips them.
 
 ---
 
-## Feature — `feat/personalize-preview-modal` branch (IMPLEMENTED 2026-05-31)
+## Personalize preview modal (shipped 2026-06-01, hardened 2026-06-05)
 
-> **Status: COMPLETE on branch, NOT pushed.** Tests: **321 passed + 3 skipped**
-> (was 274; +1 skipped = `RUN_PLAYWRIGHT_LIVE` render test). ruff + mypy(app.py)
-> + bandit(app.py, medium) clean. No PR yet — push awaits explicit approval.
->
-> **Shipped over plan `87a814b`**: 3 backend routes (`personalize_preview` +
-> content-type-aware CSP `.svg`-only so HTML SPAs still run; `personalize_screenshot`
-> + Playwright render — semaphore in `create_app`, isolated `_block_external`,
-> logged 500, `type="png"` fix [temp-ext bug caught by the smoke]; `personalize_run`
-> retrofit — shared `_validate_html_dir`, success-gated `preview-*.png` clear,
-> `html_dir` in JSON) + frontend modal in `templates/personalize.html` (result-card
-> + 3-tab ARIA dialog, glassmorphism on `:root` tokens, modal JS: open/close/Esc/
-> backdrop, focus trap, tablist arrow-key nav, lazy thumb/compare loaders,
-> screenshot cache-bust). Per-task two-stage reviews + final integration review;
-> code-review must-fixes I1/I2/I3 + M1/M2 closed. **Playwright smoke VERIFIED**
-> (SPA scripts ran in iframe — toggle+carousel; arrow-key tab nav; Esc close +
-> focus return + iframe about:blank; CSP .svg-only via curl) and **live render
-> test PASSED** (real headless Chromium → valid 1280×800 PNG, gated
-> `RUN_PLAYWRIGHT_LIVE=1`). **INT-1 accepted limitation**: self-hosted @font-face
-> → system fallback in iframe (opaque null origin vs same-host ACAO; widening to
-> `*` reopens R2-PRC002) — documented in app.py. **Remaining**: push + `gh pr
-> create` (needs explicit approval). Deferred (minor): ArrowRight wrap leaves
-> focus on last tab (all reachable); optional `os.path.isdir`→404 guard in
-> `personalize_run` (noted inline).
->
-> _Historical (superseded):_ original 2026-05-16 freeze was at `a9ef414`, 276
-> tests, no code shipped.
->
-> **2026-05-30 UPDATE — plan-review-cycle Round 2 CLOSED.** All 8 open R2
-> findings (R2-PRC003..010) dispositioned with per-finding approval: 7
-> Resolved, 1 No Plan Change (R2-PRC010 Advisory, zero-build single-template
-> contract upheld). R2-PRC004 (SVG/CSP) resolved via deep-researcher-backed
-> decision: add `Content-Security-Policy: default-src 'none'; ...; script-src
-> 'none'; sandbox` + `X-Content-Type-Options: nosniff` on the preview
-> file-serving route; keep `.svg`; no server-side SVG sanitizer (overkill for
-> single-operator trust model). Validator returned exit 0. **Next step:
-> `superpowers:writing-plans`** to convert the corrected spec into a tasked
-> plan under `docs/superpowers/plans/`. Plan Review Log is the source of truth
-> for the 7 Resolved changes — each finding's `plan_changes_made` is
-> implementation-ready.
+Visual preview of personalize output — 3-tab modal (Inspecionar sandboxed
+iframe / Thumb screenshot / Antes-Depois split) backed by two Flask routes.
+Merged in **PR #45** (`f73101d`, feature) and **PR #47** (`21e0eaf`, five
+post-merge review fixes). Related follow-up: **PR #55** pinned
+`KCD_MAX_CONCURRENT_RENDERS=1` for small Render instances.
 
-**What it is**: Visual preview of personalize output. Modal with 3 tabs
-(Inspecionar iframe / Thumb screenshot / Antes-Depois split). Spec at
-`docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`.
+**Backend surface** (`app.py`):
+- `GET /personalize/preview/<dir>/<path:asset>` — serves captured files into
+  the iframe. Content-type-aware CSP (`script-src 'none'` on `.svg` only so
+  captured SPA JS still runs in `.html`); extension allowlist;
+  `_validate_html_dir` realpath confinement; `send_from_directory` native
+  protection. Since #47: `Cache-Control: no-cache` on `.html` (revalidate via
+  ETag/Last-Modified); top-level CSP guard fires on **any** captured `.html`
+  when `Sec-Fetch-Dest != "iframe"`.
+- `GET /api/personalize/screenshot/<dir>?which=before|after` — lazy Playwright
+  render to PNG. Concurrency-bounded semaphore built in `create_app()`
+  (`KCD_MAX_CONCURRENT_RENDERS`, pinned to 1 on Render via #55); atomic
+  tempfile + `os.replace`; external requests blocked; 503+Retry-After on
+  capacity; structured 500 on render failure. `type="png"` pinned — Playwright
+  otherwise infers from the tempfile's `.tmp` suffix.
+- `personalize_run` retrofit — shared `_validate_html_dir`; returns
+  `html_dir`; **success-gated** `preview-*.png` clear (stale screenshot never
+  served after a failed re-run).
 
-**Workflow used**: `superpowers:brainstorming` → `plan-review-cycle` (2
-rounds). NOT yet to `superpowers:writing-plans`.
+**Frontend** (`templates/personalize.html`, zero-build IIFE): result-card +
+ARIA dialog (3 `role=tab`s); open/close/Esc/backdrop; **focus trap** (post-#47
+excludes `tabIndex < 0` so Shift+Tab can't escape via inactive tab buttons);
+**tablist arrow-key nav** (Arrow/Home/End); lazy thumb/compare loaders;
+screenshot cache-bust on re-run. Iframe is `sandbox="allow-scripts"` **without**
+`allow-same-origin` (opaque origin).
 
-**Where we stopped**: Round 2 of plan-review-cycle. 2 Critical closed
-(R2-PRC001 dual `<path:>` converter, R2-PRC002 iframe CORS+credentialless).
-Open in Round 2:
-- R2-PRC003 [Major] symlink test portability
-- R2-PRC004 [Major] SVG XSS in-iframe phishing — needs CSP decision
-- R2-PRC005 [Minor] SPA acceptance criterion unverifiable
-- R2-PRC006 [Minor] cache-clear runs before pipeline failure
-- R2-PRC007 [Minor] external-network test mock strategy conflict
-- R2-PRC008 [Minor] env override test requires module reload
-- R2-PRC009 [Minor] test_personalize_app.py existence unverified
-- R2-PRC010 [Advisory] template LOC growth note
+**Tests**: `tests/test_preview_endpoint.py` (preview + screenshot +
+`_validate_html_dir` + iframe-vs-top-level CSP/cache differentials, some added
+in #47 as replacements for the two weak tests the local review flagged);
+`tests/test_render_live.py` (real headless Chromium render, gated
+`RUN_PLAYWRIGHT_LIVE=1`, runs on every PR via the `render-live` CI job added
+in #47).
 
-**Next session resume**:
-1. `git checkout feat/personalize-preview-modal` (tip `abbc741`)
-2. Re-read `docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`
-   → "Plan Review Log → Review Round 2" section
-3. Walk through 8 remaining findings (R2-PRC003 through R2-PRC010), one
-   per `plan-review-cycle` skill protocol (concern → research → propose
-   disposition → user approval → update spec + log)
-4. After all R2 closed: `python3 ~/.claude/skills/plan-review-cycle/scripts/validate_plan_review_log.py docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`
-   (must exit 0)
-5. Decide: Round 3 OR `superpowers:writing-plans` to convert spec into
-   tasked implementation plan in `docs/superpowers/plans/`
-6. Implementation per the 8-task "Execution order (TDD-first)" section
-   already in the spec.
+**Accepted limitations**:
+- **INT-1**: self-hosted `@font-face` webfonts fall back to system fonts in
+  the Inspecionar tab — the opaque (null) origin's CORS font fetch doesn't
+  match the same-host ACAO header; widening to `*` would re-open R2-PRC002.
+  Cosmetic, single-operator; documented inline in `app.py`.
+- ArrowRight wrap-around activates the last tab but leaves focus on it (all 3
+  reachable).
 
-## Skill workflow lessons (this session)
+**Reference artifacts** still in-tree:
+`docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md` +
+`docs/superpowers/plans/2026-05-30-personalize-preview-modal.md` — kept as a
+worked example of the full superpowers chain (brainstorming → plan-review-cycle
+2 rounds, 23 findings disposed → writing-plans 3 reviewer passes →
+subagent-driven-development 8 tasks with two-stage reviews → final integration
+review). The plan review caught 2 Critical + 8 Major that R1 missed on its
+own.
+
+## Skill workflow lessons (from the personalize preview modal, PRs #45/#47)
 
 - **Brainstorming → spec → plan-review-cycle → writing-plans → execute**
   is the rigid superpowers chain. Don't skip plan-review-cycle for
