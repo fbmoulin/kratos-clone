@@ -65,15 +65,20 @@ RUN uv sync --locked --no-dev
 # symlink unless that stage uses this same base image.
 ENV PATH="/app/.venv/bin:$PATH"
 
+# 🔒 Land Playwright browsers where the non-root runtime user (added at the bottom
+# of this file) can still read them. Without this, browsers go to
+# `/root/.cache/ms-playwright`, which becomes unreadable after `USER app` and every
+# capture fails with an obscure "Executable doesn't exist" from Playwright.
+# Setting the env BEFORE the install step is what routes the download here.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+
 # Install Playwright browsers and dependencies.
 #
-# Ordering is load-bearing twice over: this must run AFTER the venv is on PATH (or it
-# resolves a different Python and installs the browser where the app cannot find it),
-# and while still root (`--with-deps` shells out to apt).
-#
-# ⚠️ Coupling with a known audit finding: docs/AUDIT.md carries a P3 for this image
-# having no USER directive. Adding a non-root USER without also moving this line
-# above it will break the build.
+# Ordering is load-bearing three ways: this must run AFTER the venv is on PATH (or
+# it resolves a different Python and installs the browser where the app cannot find
+# it), AFTER PLAYWRIGHT_BROWSERS_PATH is set (or the browsers land in a root-owned
+# cache), and BEFORE the `USER app` switch below (`--with-deps` shells out to
+# apt-install, which needs root).
 RUN playwright install --with-deps chromium
 
 # Copy application files
@@ -96,11 +101,37 @@ RUN chmod +x /app/entrypoint.sh
 ARG GIT_SHA=""
 ENV KC_BUILD_SHA=$GIT_SHA
 
+# 🔒 Non-root runtime user (closes PRE_DEPLOY_AUDIT N-7). Everything above this
+# line runs as root on purpose: `apt-get install`, `--with-deps` in the Playwright
+# step, source COPY, chmod. Adding `USER` above `playwright install --with-deps
+# chromium` would break the apt-install path that step relies on.
+#
+# --system: no aging fields, no /etc/skel; UID/GID 65532 matches the distroless
+# `nonroot` convention (well outside real host UID ranges — safe collision-free
+# default). `chown -R` covers both /app (source + venv + downloads/) and
+# /opt/ms-playwright (browsers routed there via PLAYWRIGHT_BROWSERS_PATH above),
+# so gunicorn and Chromium can both read what they need after the USER switch.
+RUN groupadd --system --gid 65532 app \
+ && useradd  --system --uid 65532 --gid app --no-create-home --shell /usr/sbin/nologin app \
+ && chown -R app:app /app /opt/ms-playwright
+USER app
+
 # Set default PORT environment variable
 ENV PORT=8080
 
 # Expose port (Railway/Render will set $PORT)
 EXPOSE 8080
+
+# 🩺 Container-level health probe (closes PRE_DEPLOY_AUDIT N-6). Defense-in-depth
+# against Render's external HTTP probe: this one runs INSIDE the container, so
+# `docker ps` reports `(healthy)` / `(unhealthy)` and `docker inspect --format
+# '{{.State.Health.Status}}'` works for local Docker + Railway. `--start-period`
+# gives gunicorn + Playwright cold-start slack before failures count; three failures
+# at 30s spacing flip the container to unhealthy. Shell form so `${PORT}` expands
+# at runtime (Render/Railway may override the default 8080). wget is already
+# installed by the apt layer above — no extra dependency here.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
+    CMD wget --spider -q "http://localhost:${PORT}/health" || exit 1
 
 # Use shell form to ensure proper variable expansion
 CMD ["/bin/bash", "/app/entrypoint.sh"]

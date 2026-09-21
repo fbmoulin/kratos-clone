@@ -137,8 +137,12 @@ gh run list --limit 5
 > mitigated by launch-arg constant in `kratos_clone/capture.py` (CfT
 > memory-reduction flags; sandbox stays on). Remaining: N-4 partial
 > (preview endpoint CORS-aware via PR #45/#47; POST endpoints still
-> uncovered) + 5 MINOR fully deferred (Dockerfile HEALTHCHECK, Dockerfile
-> USER, janitor daemon, dead Procfile, `downloader.py` bandit exclusion).
+> uncovered) + 3 MINOR fully deferred (janitor daemon, dead Procfile,
+> `downloader.py` bandit exclusion). Dockerfile HEALTHCHECK (N-6) and
+> non-root USER (N-7) closed on `claude/analyze-project-yqoP9`
+> — wget-based probe against `/health` + UID/GID 65532 with Playwright
+> browsers rehomed to `/opt/ms-playwright` so the USER switch doesn't
+> blind them.
 
 ---
 

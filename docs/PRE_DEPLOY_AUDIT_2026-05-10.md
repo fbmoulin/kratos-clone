@@ -82,8 +82,8 @@ BOOT OK — 10 routes
 | N-3 | 🟢 MINOR  | 20+ `KCD_*` env vars undocumented for operators | `kratos_clone/capture.py:185-228` | **RESOLVED via B-2 fix** |
 | N-4 | 🟢 MINOR  | No CORS/CSRF on POST endpoints | `app.py` (no `flask-cors` import) | **PARTIAL** — preview endpoint has explicit same-host CORS + CSP (PR #45/#47); POST endpoints still uncovered |
 | N-5 | 🟢 MINOR  | Janitor thread `daemon=True`; SIGTERM during cleanup may leak | `app.py:243` | DEFERRED — idempotent rmtree mitigates |
-| N-6 | 🟢 MINOR  | `Dockerfile` lacks `HEALTHCHECK` directive | `Dockerfile` | DEFERRED — Render uses external HTTP probe |
-| N-7 | 🟢 MINOR  | `Dockerfile` runs as root (no `USER` directive) | `Dockerfile` | DEFERRED — single-tenant container |
+| ~~N-6~~ | 🟢 MINOR  | `Dockerfile` lacks `HEALTHCHECK` directive | `Dockerfile` | ✅ **CLOSED** on `claude/analyze-project-yqoP9` — `HEALTHCHECK` with `wget --spider` against `/health`, 30s interval, 45s start-period, 3 retries |
+| ~~N-7~~ | 🟢 MINOR  | `Dockerfile` runs as root (no `USER` directive) | `Dockerfile` | ✅ **CLOSED** on `claude/analyze-project-yqoP9` — non-root `app` user (UID/GID 65532, distroless-`nonroot` convention); browsers rehomed to `/opt/ms-playwright` via `PLAYWRIGHT_BROWSERS_PATH` so the switch doesn't blind Playwright |
 | N-8 | 🟢 MINOR  | `Procfile` is dead code under `env: docker` | `Procfile`, `render.yaml:4` | DEFERRED — harmless |
 | N-9 | 🟢 MINOR  | `downloader.py` excluded from CI bandit scope; 1 unannotated High finding (md5 used for non-security filename hashing) | `downloader.py:87`, `.github/workflows/ci.yml` bandit run | DEFERRED |
 
