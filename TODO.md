@@ -14,31 +14,14 @@ see `docs/AUDIT.md`.
 > closed as of 2026-05-10. mypy Stages A–D all shipped (full strict
 > coverage). **UX audit U1–U9 + A11y P0 all closed (PRs #23, #24, #29, #30, #31).**
 > **Visual rebrand to Kratos Clone shipped 2026-05-16 (PR #32) — dark + vivid
-> orange radial + Bricolage Grotesque display.** Remaining: ~13 P3 in
-> `docs/AUDIT.md`. No active phase header — picking off opportunistic wins.
-
----
-
-## 🔄 In Progress — `feat/personalize-preview-modal` branch
-
-> **WIP** since 2026-05-16. Spec finalized via brainstorming + plan-review-cycle.
-> Code NOT yet shipped. Branch tip: `abbc741`.
-
-- [ ] **Personalize preview modal** — adds `/personalize` result-card +
-      fullscreen modal with 3 tabs (Inspecionar iframe / Thumb screenshot /
-      Antes-Depois split). 2 new Flask routes (`personalize_preview` +
-      `personalize_screenshot`), `_validate_html_dir` shared helper,
-      `_render_html_to_png` with atomic write + bounded concurrency
-      semaphore + external network abort.
-      Spec: `docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`.
-
-  **Review status**: Round 1 (10 findings, all closed) + Round 2 (2 Critical
-  closed). Remaining R2 findings to walk through next session: R2-PRC003
-  (symlink test portability), R2-PRC004 (SVG XSS CSP defense), R2-PRC005–009
-  (5 Minor), R2-PRC010 (1 Advisory). After R2 closes, run `python
-  scripts/validate_plan_review_log.py docs/superpowers/specs/2026-05-16-...md`
-  to confirm exit 0, then invoke `superpowers:writing-plans` to convert
-  spec into tasked implementation plan.
+> orange radial + Bricolage Grotesque display.** **Personalize preview modal
+> shipped 2026-06-01, hardened 2026-06-05 (PRs #45, #47, #55).** **CI
+> unblocked + pinned to `uv.lock`; `requirements.txt` retired 2026-08-03;
+> Docker image now built + smoke-tested in CI.** **Dockerfile hardened with
+> non-root `USER` + `HEALTHCHECK` (2026-09-21); doc-only diffs skip the two
+> expensive CI jobs (2026-09-25).** Suite: 358 passing + 3 skipped. Remaining:
+> ~13 P3 in `docs/AUDIT.md` + the "Later" backlog below. No active phase
+> header — picking off opportunistic wins.
 
 ---
 
@@ -56,12 +39,12 @@ Long-tail candidates:
   unused `network_resources` field, CI action SHA-pinning, dep upper-bounds).
   CI action SHA-pinning **partially closed 2026-08-02**: `astral-sh/setup-uv` is pinned
   to a commit SHA; `actions/checkout@v7` is still on a mutable tag.
-- **Widen the `ruff` CI scope** — measured 2026-08-02: the `lint` job checks only
+- **Widen the `ruff` CI scope** — re-verified 2026-09-25: the `lint` job still checks only
   `kratos_clone/` and `scripts/`, while `bandit` covers `personalize/` + `app.py` too and
-  `mypy` covers 21 files. `personalize/` (8 files) and `tests/` (27) are ruff-clean today
-  but nothing keeps them that way. Changing the two `run:` lines should pass first try;
-  all 28 findings from `ruff check .` are in `downloader.py` (legacy, out of scope by
-  design) plus 2 pre-existing `E501` at `app.py:234-235`.
+  `mypy` covers 21 files. `app.py`, `personalize/` (8 files) and `tests/` (27) are all
+  ruff-clean today but nothing keeps them that way. Changing the two `run:` lines should
+  pass first try; all 28 findings from `ruff check .` are in `downloader.py` (legacy, out
+  of scope by design).
 - **No metrics or tracing** — measured 2026-08-02: zero prometheus / opentelemetry /
   sentry / datadog / statsd. Observability today is structured logs (`structlog`),
   `/health` (now with `build_sha`), `/api/client-errors` and the browser logger. Adequate
@@ -72,17 +55,35 @@ Long-tail candidates:
   `healthCheckPath: /health` would make it participate. **Now more valuable than when it was
   filed:** the image build changed on 2026-08-03, so the deploy gate not reading `/health` is
   the difference between a promoted-but-dead container and a caught one.
-- **`ci.yml` has no `paths-ignore`** — every doc-only push now pays a full container build
-  (~1 min) for a diff that cannot affect the image. Compare `deploy.yml` in KCP, which gained
-  exactly this filter on 2026-08-02.
 
-_All "Later" items shipped as of 2026-05-10. New work is tracked directly in
-`docs/AUDIT.md` (~13 P3 long-tail) or surfaces via CodeRabbit/audit review._
+_This list is not a frozen snapshot — items get added and closed as they're found or
+fixed. New work also surfaces directly via `docs/AUDIT.md` (~13 P3 long-tail) or
+CodeRabbit/audit review._
 
 ---
 
 ## Done ✅
 
+- [x] **2026-09-25** — **`ci.yml` doc-only diffs skip `render-live` + `docker-build`.**
+      New `changes` job computes whether every changed file ends in `.md`; the two
+      expensive jobs (~40s + ~65s) carry `needs: changes` + a matching `if:`. Workflow-level
+      `paths-ignore:` was rejected — a required status check skipped by the workflow is not
+      treated as green by branch protection, so it would have silently blocked every doc PR
+      (`Lint (ruff)` + `Import + module smoke test` are the two required contexts).
+- [x] **2026-09-21** — **Dockerfile hardening: non-root `USER` + `HEALTHCHECK`.** Closes
+      `PRE_DEPLOY_AUDIT_2026-05-10.md` N-6 + N-7. System user `app` (UID/GID 65532,
+      distroless-`nonroot` convention) switches in after every root-only step. Playwright
+      browsers rehomed to `/opt/ms-playwright` via `PLAYWRIGHT_BROWSERS_PATH` set before the
+      install step, so the `USER` switch doesn't strand them in a root-owned cache dir.
+      `HEALTHCHECK` runs `wget --spider` against `/health` (wget already on the image).
+- [x] **2026-06-01, hardened 2026-06-05** — **Personalize preview modal shipped (PRs #45,
+      #47, #55).** 3-tab modal (Inspecionar sandboxed iframe / Thumb screenshot /
+      Antes-Depois split); 2 new Flask routes; the Round 2 findings this TODO previously
+      tracked as open (R2-PRC003 symlink portability, R2-PRC004 SVG CSP, R2-PRC005–009,
+      R2-PRC010) were all dispositioned before implementation per plan-review-cycle
+      protocol. Post-merge review (#47) closed 5 more issues: stale-iframe cache, CSP
+      top-level guard gap, focus-trap escape, `file://` URL encoding, missing `render-live`
+      CI regression net. See `CHANGELOG.md [0.5.0]` for the full breakdown.
 - [x] **2026-08-03** — **`requirements.txt` removed; the container installs from `uv.lock`.** Step 2 of 2 (step 1 was the `docker image build + smoke` job, PR #76, which is what makes this change verifiable at all). The file was generated from the lock but was indistinguishable from a hand-maintained manifest, so Dependabot edited single lines in it with no awareness of what the lock could satisfy: the identical `pydantic-core` one-liner appeared **four times** (#43, #48, #53, #73), and **#43 was merged**, pairing `pydantic==2.13.4` (which hard-pins `pydantic-core==2.46.4`) with `pydantic-core==2.47.0` — `ResolutionImpossible`, broken Docker build. Retiring the `pip` ecosystem did not close the class; #73 came through the `uv` ecosystem. No upstream fix exists (`dependabot-core#13912`, `#2883` both open) and an `ignore:` rule was rejected rather than deferred, because it also suppresses **security** updates where no `target-branch` is set. `Dockerfile` now runs `uv sync --locked --no-dev` into `/app/.venv` with the `uv` binary pinned by multi-arch index digest; `ENV PATH="/app/.venv/bin:$PATH"` is load-bearing because `entrypoint.sh` invokes bare `gunicorn`. Chosen over `uv export | pip install` on measured evidence (364 MB vs 391 MB; built first try vs three consecutive network failures). Package-set equivalence proven at 42 packages before the switch. `scripts/relock.sh` and the export/diff half of the drift guard deleted with it; `uv lock --check` kept.
 - [x] **2026-08-02** — **CI unblocked, pinned and enforcing; Pillow advisories closed (PRs #64, #67, #68, #69, #70, #71)**. `main` had been failing `mypy` since 2026-06-29: beautifulsoup4 4.15 declares `name: None` with no default on the dict-`attrs` overload, so `find_all(attrs={...})` matched no variant — and because every CI job installed unpinned-latest from PyPI, a dependency release turned `main` red with no commit touching the code. Fixed at 5 call sites with keyword `name=None`, green under both 4.14.3 and 4.15.0. Seven jobs then pinned to `uv.lock` via SHA-pinned `astral-sh/setup-uv` + `uv sync --locked --group dev` + `uv run --frozen` on every execution line (`--locked` not `--frozen` on sync: `--frozen` exits 0 on a pyproject/lock mismatch and installs the violating version; `--frozen` on run lines because a bare `uv run` rewrites the lock mid-job; `UV_FROZEN` never set at workflow level — mutually exclusive with `--locked`). `uv` pinned to 0.12.1 after re-verifying all four behaviours. Drift guard fixed: `uv export` silently re-locks on mismatch, so `--locked` added, plus a new `uv lock --check` step for the pyproject↔lock drift nothing detected. `scripts/relock.sh` added as the single relock implementation, with a name guard (`uv lock --upgrade-package` exits 0 on an unknown package). Non-blocking `forward-compat` canary added and proven to detect a revert. `/health` now reports `build_sha`. Pillow 12.2.0 → 12.3.0 closed **26 advisories**; `pip-audit` on `main` reports none. `vulnerability-alerts` + `automated-security-fixes` enabled; ruleset now requires 4 checks (was 2) with `strict` deliberately off. Suite 337 → **358 passed, 3 skipped**. Detail: `docs/handoff/2026-08-02-ci-unblock.md`.
 - [x] **2026-05-16** — **UI rebrand to Kratos Clone — dark + vivid orange radial (PR #32)**. Brand wordmark "KRATOS CLONE" (orange "CLONE" + text-shadow glow) + descriptor per page. Display font Bricolage Grotesque (Google Fonts, variable, 500+700, `display=swap`). Body two-radial atmosphere over `--ink-base #0a0a14`. Full `:root` design token system: ink + orange scales, semantic colors, multi-layer shadows, 8px spacing grid, radii, durations, easing. New highlight box on `/` (BETA chip + headline + orange CTA, hover-lift + glow, inner radial `::before` bloom). New tips banner on `/personalize` (collapsible `<details>` with 3 sections: Como funciona / Dicas para um bom brief / Tempo esperado; localStorage flag for return visits). New brief-assist: "Carregar exemplo pronto" button + 3 icebreaker chips (SaaS / fitness / educacional) each populating a realistic ~250-char PT-BR brief. Motion grammar: page-load stagger (header → tagline/tips → indicator → card 0/80/160/240ms), CTA pulse (scale 1↔1.015 every 2.4s, paused on `:hover`), all under `prefers-reduced-motion: reduce` guard. **Drive-by**: U6 step-indicator connector fill direction fix (was filling `(n-1)→n`, now fills `n→(n+1)` forward; bug discovered via Playwright smoke test pre-PR). Dev-workflow Alta complexity followed (spec at `docs/superpowers/specs/2026-05-16-ui-rebrand-orange-radial.md`); `frontend-design` skill + `ui-ux-designer` agent. +9 regression tests (257 → 266 passing, +1 strict a11y-preservation guard). Smoke screenshots: `/home/fbmoulin/rebrand-0[1-4]-*.png`.

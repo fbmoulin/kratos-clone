@@ -3,17 +3,20 @@
 Phased plan derived from `docs/AUDIT.md` (multi-agent audit, 2026-04-27) and
 the proposed architecture in `docs/WORKFLOW.md` + `docs/PERSONALIZATION.md`.
 
-> **Current state (2026-05-30):** All 6 original phases shipped. Personalization
+> **Current state (2026-09-25):** All 9 phases shipped. Personalization
 > MVP live (gpt-5-mini Responses + gpt-image-1, hard budget cap, sanitize
 > hardened). All 9 P1 + all 12 P2 audit items closed. mypy strict on every
 > source file. **Phase 7 (UX audit U1–U9 + A11y P0) shipped 2026-05-11/15
 > across PRs #23, #24, #29, #30, #31.** **Phase 8 (visual rebrand to
 > "Kratos Clone" — dark + vivid orange radial + Bricolage Grotesque display)
-> shipped 2026-05-16, PR #32.** Pre-deploy audit completed (PR #21 merged):
-> both BLOCKERs fixed, urllib3 CVE bumped. See `TODO.md` for opportunistic
+> shipped 2026-05-16, PR #32.** **Phase 9 (personalize preview modal) shipped
+> 2026-06-01, hardened 2026-06-05, across PRs #45, #47, #55.** Pre-deploy
+> audit MAJORs all closed or partially mitigated; Dockerfile N-6/N-7 (non-root
+> `USER` + `HEALTHCHECK`) closed 2026-09-21; `ci.yml` skips the two expensive
+> CI jobs on doc-only diffs (2026-09-25). See `TODO.md` for opportunistic
 > follow-ups, `CHANGELOG.md` for the per-release log, and
-> `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` for the remaining MAJOR/MINOR backlog.
-> Test count: 288 passing + 2 skipped.
+> `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` for the remaining MINOR backlog.
+> Test count: 358 passing + 3 skipped.
 
 ---
 
@@ -162,25 +165,32 @@ UX audit on both Flask templates identified 7 a11y categories + 9 user-experienc
 
 ---
 
-## Phase 9 — Personalize preview modal 🔄 IN DESIGN (2026-05-16)
+## Phase 9 — Personalize preview modal ✅ SHIPPED 2026-06-01, hardened 2026-06-05
 
-Visual preview of personalize output (today operator sees only `Saída: <path>`
-text). Modal with 3 tabs (Inspecionar iframe / Thumb screenshot / Antes-Depois
-split). Spec finalized via brainstorming + plan-review-cycle (2 review rounds,
-12 findings dispositioned). Implementation deferred to next session.
+Visual preview of personalize output (previously the operator saw only
+`Saída: <path>` text). Modal with 3 tabs (Inspecionar sandboxed iframe / Thumb
+screenshot / Antes-Depois split), backed by two new Flask routes. Design
+followed the full superpowers chain: brainstorming → plan-review-cycle (2
+rounds, 23 findings dispositioned, validator green) → writing-plans (3
+reviewer passes) → subagent-driven-development (8 tasks, two-stage review
+each) → final integration review.
 
-| Component | Status |
-|-----------|--------|
-| Brainstorm + design | ✅ user-approved |
-| Spec doc + Plan Review Log | ✅ committed (`abbc741`) |
-| Round 1 review | ✅ 10/10 findings closed |
-| Round 2 review | 🔄 2 Critical closed; 2 Major + 5 Minor + 1 Advisory open |
-| Validator green | ⏳ pending R2 closure |
-| writing-plans → tasked plan | ⏳ pending validator |
-| Code shipped | ⏳ pending plan execution |
+| Component | Landed in | Notes |
+|-----------|-----------|-------|
+| `GET /personalize/preview/<dir>/<path:asset>` | PR #45, hardened #47 | Content-type-aware CSP (`script-src 'none'` on `.svg` only); `_validate_html_dir` realpath confinement; `Cache-Control: no-cache` on `.html` since #47 |
+| `GET /api/personalize/screenshot/<dir>` | PR #45, hardened #47 | Lazy Playwright render to PNG; concurrency-bounded semaphore (`KCD_MAX_CONCURRENT_RENDERS`, pinned to 1 on Render via #55); atomic tempfile + `os.replace` |
+| `personalize_run` retrofit | PR #45 | Shared `_validate_html_dir`; success-gated `preview-*.png` clear |
+| Modal frontend | PR #45, hardened #47 | ARIA dialog (3 `role=tab`s); focus trap (post-#47 excludes `tabIndex < 0`); arrow-key tab nav; screenshot cache-bust |
+| Post-merge review fixes | PR #47 | 5 issues: stale-iframe cache HIGH, top-level CSP miss MEDIUM, focus-trap escape MEDIUM, `file://` URL encoding LOW, missing `render-live` CI job (process) |
+
+**Accepted limitation (INT-1)**: self-hosted `@font-face` webfonts fall back
+to system fonts inside the iframe — the opaque (null) origin's CORS font
+fetch doesn't match the same-host ACAO header; widening to `*` would re-open
+a closed CORS finding (R2-PRC002). Cosmetic, single-operator; documented
+inline in `app.py`.
 
 **Spec**: `docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`
-**Branch**: `feat/personalize-preview-modal`
+**Plan**: `docs/superpowers/plans/2026-05-30-personalize-preview-modal.md`
 
 ---
 
