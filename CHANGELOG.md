@@ -7,6 +7,41 @@ group, with the `0.x` series reflecting pre-1.0 status.
 
 ---
 
+## [Unreleased] — 2026-09-25: doc-only CI cost cut
+
+### Added
+- **New `changes` job gates the two expensive CI jobs.** `render-live`
+  (~40s, Chromium download + live render) and `docker-build` (~65s, image
+  build) now carry `needs: changes` + `if: needs.changes.outputs.code ==
+  'true'`. A doc-only diff (every changed file ends in `.md`) skips both.
+  Workflow-level `paths-ignore:` was considered and rejected: a required
+  status check that never runs because the workflow was skipped is not
+  treated as green by branch protection — it stays "expected" and blocks
+  the merge forever. `Lint (ruff)` and `Import + module smoke test` (the
+  two required contexts) stay unconditional; only the two non-required,
+  slow jobs are gated.
+
+---
+
+## [Unreleased] — 2026-09-21: Dockerfile hardening
+
+### Added
+- **Non-root `USER` + `HEALTHCHECK` in the production image**, closing the
+  two remaining `PRE_DEPLOY_AUDIT_2026-05-10.md` Dockerfile findings (N-6,
+  N-7). System user `app` (UID/GID `65532`, distroless-`nonroot`
+  convention) switches in after every root-only step (apt-install,
+  `playwright install --with-deps`, source `COPY`, `chmod`) — moving it
+  earlier would break the apt-install path `--with-deps` shells out to.
+  `HEALTHCHECK` runs `wget --spider` against `/health` (`wget` already
+  installed by the apt layer; no new dependency), `--start-period=45s` for
+  gunicorn + Playwright cold start.
+- **Playwright browsers rehomed to `/opt/ms-playwright`** via
+  `PLAYWRIGHT_BROWSERS_PATH` set *before* the install step, so the `USER`
+  switch doesn't strand them in `/root/.cache/ms-playwright` (which would
+  fail every capture with an obscure "Executable doesn't exist").
+
+---
+
 ## [Unreleased] — 2026-08-03: the container is finally tested
 
 ### Added
@@ -156,24 +191,47 @@ Test suite 337 → **358 passed, 3 skipped**.
 
 ---
 
-## [Unreleased] — WIP on `feat/personalize-preview-modal` branch
+## [0.5.0] — 2026-06-01 (hardened 2026-06-05) — Personalize preview modal
 
-### In progress
-- **Personalize preview modal** (spec at `docs/superpowers/specs/2026-05-16-personalize-preview-modal-design.md`).
-  Brainstorming + plan-review-cycle established the design across 2 review rounds.
-  Round 1: 10 findings closed (1 Critical / 6 Major / 1 Minor / 2 Advisory).
-  Round 2: 2 Critical closed (dual `<path:>` converter routing bug;
-  iframe `sandbox="allow-scripts"` + ACAO restricted-to-host header for
-  `@font-face` + `credentialless` attribute progressive enhancement).
-  **Remaining R2 findings open**: 2 Major (R2-PRC003 symlink test
-  portability, R2-PRC004 SVG XSS in-iframe phishing CSP defense) + 5 Minor
-  (R2-PRC005 SPA verifiability, R2-PRC006 cache-clear before pipeline
-  failure, R2-PRC007 mock strategy conflict, R2-PRC008 env override
-  fragility, R2-PRC009 test_personalize_app.py existence unverified) +
-  1 Advisory (R2-PRC010 template LOC growth note).
-  Branch tip: `abbc741`. Next session should resume Round 2 walk-through.
-  No code shipped yet; implementation will follow `writing-plans` skill
-  after Round 2 closes.
+### Added
+- **Visual preview of personalize output.** Previously the operator saw only
+  `Saída: <path>` text after a run; now a result-card opens a 3-tab modal
+  (Inspecionar sandboxed iframe / Thumb screenshot / Antes-Depois split).
+  Two new Flask routes: `GET /personalize/preview/<dir>/<path:asset>`
+  (content-type-aware CSP, `_validate_html_dir` realpath confinement) and
+  `GET /api/personalize/screenshot/<dir>` (lazy Playwright render to PNG,
+  concurrency-bounded semaphore, atomic tempfile write). (#45)
+- **Modal frontend** (zero-build, `templates/personalize.html`): ARIA
+  dialog with 3 `role=tab`s, open/close/Esc/backdrop, focus trap, arrow-key
+  tab navigation, lazy thumb/compare loaders, screenshot cache-bust on
+  re-run. (#45)
+- Design followed the full superpowers chain: brainstorming →
+  plan-review-cycle (2 rounds, 23 findings dispositioned) → writing-plans →
+  subagent-driven-development (8 tasks, two-stage review each) → final
+  integration review.
+
+### Fixed (PR #47, post-merge review)
+- **Stale iframe after re-personalize (HIGH).** The preview `.html` served
+  `max-age=3600` with no cache-bust on the iframe `src`, so Inspecionar
+  showed the previous run's HTML for up to an hour. Now `Cache-Control:
+  no-cache` on `.html` (revalidates via ETag/Last-Modified); hashed assets
+  keep `max-age=3600`.
+- **CSP top-level guard missed `personalized.html` (MEDIUM).** The guard
+  keyed on `basename == "index.html"`; now applies to any captured `.html`
+  when `Sec-Fetch-Dest != "iframe"`.
+- **Focus-trap escape (MEDIUM).** Roving-tabindex inactive tab buttons were
+  included in the trap's focusable set, so Shift+Tab could leave the
+  modal; now excludes `tabIndex < 0`.
+- **`file://` render URL not encoded (LOW).** Capture dirs with `#` or
+  spaces mis-parsed as a URL fragment → timeout → 500; now uses
+  `Path(src).as_uri()`.
+- **Render regression net never ran in CI (process).** New `render-live`
+  CI job installs Chromium and runs the gated live-render test on every PR.
+
+### Related
+- **PR #55** pinned `KCD_MAX_CONCURRENT_RENDERS=1` for small Render
+  instances (each render peaks ~150-300 MB; the default of 2 concurrent
+  renders OOM-kills a 512 MB tier).
 
 ---
 

@@ -4,13 +4,19 @@ Hardened SPA site cloner + DTCG design system extractor + OpenAI personalization
 Fork of [`asimov-academy/Website-Downloader`](https://github.com/asimov-academy/Website-Downloader)
 with substantial additions on top of the original Flask UI.
 
-> **Status (2026-05-30):** All 8 phases shipped. **288 tests passing**, 2 skipped
+> **Status (2026-09-25):** All 9 phases shipped. **358 tests passing**, 3 skipped
 > (live OpenAI gated by `RUN_OPENAI_LIVE=1`). mypy strict on every source file
 > (Stage A–D); bandit MEDIUM gate, 0 findings. All 9 P1 + all 12 P2 audit items
 > closed. UX audit U1–U9 + A11y P0 shipped (PRs #23, #24, #29, #30, #31).
 > **Visual rebrand to "Kratos Clone" — dark + vivid orange radial + Bricolage
-> Grotesque display — shipped 2026-05-16 (PR #32).** Two upstream-overlapping
-> modules co-exist (`downloader.py` = original, `kratos_clone/` = new hardened
+> Grotesque display — shipped 2026-05-16 (PR #32).** **Personalize preview
+> modal — 3-tab modal (iframe / screenshot / before-after) — shipped
+> 2026-06-01 + hardened 2026-06-05 (PRs #45, #47, #55).** Container now
+> installs from `uv.lock` directly (`requirements.txt` retired 2026-08-03);
+> `docker image build + smoke` + `render-live` CI jobs build and exercise the
+> real image on every non-doc-only push. Dockerfile hardened with a non-root
+> `USER` + `HEALTHCHECK` (2026-09-21). Two upstream-overlapping modules
+> co-exist (`downloader.py` = original, `kratos_clone/` = new hardened
 > module). See `CHANGELOG.md` for the per-release log and `ROADMAP.md` for
 > phase-by-phase history.
 
