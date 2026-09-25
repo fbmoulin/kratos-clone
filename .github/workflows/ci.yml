@@ -15,6 +15,56 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    # Detect whether this push/PR touches non-doc files. The two expensive jobs
+    # (render-live, docker-build; ~100s combined) skip when everything changed
+    # ends in `.md` — those are the seconds doc-only PRs #85/#86/#87/#88
+    # wasted. Cheap required-status-checks (Lint (ruff), Import + module smoke
+    # test) still run unconditionally so branch-protection never trips over
+    # the paths-ignore trap: a required check that is "skipped rather than
+    # green" blocks the merge, and that is the failure mode workflow-level
+    # `paths-ignore:` would silently introduce here.
+    name: detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # base + head needed to compute the diff on PRs
+      - id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          # workflow_dispatch has no diff to compute — always run everything.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE"; head="$PR_HEAD"
+          else
+            base="$PUSH_BEFORE"; head="$PUSH_SHA"
+          fi
+          # New-branch push carries a zero-sha `before` — no ancestor to diff
+          # against, so bail to code=true and let CI cover the branch fully.
+          if [ "$base" = "0000000000000000000000000000000000000000" ] || [ -z "$base" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Any file whose path (case-insensitive) doesn't end in `.md` counts as
+          # code. The set stays deliberately narrow — one extension, no path
+          # prefix — so a rename like docs/something.py (weird but possible)
+          # still trips the code=true branch instead of getting silently
+          # skipped alongside its neighbouring `.md` siblings.
+          if git diff --name-only "$base" "$head" | grep -qivE '\.md$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
@@ -154,6 +204,11 @@ jobs:
         run: uv run --frozen pytest -v tests/
 
   render-live:
+    # Doc-only pushes/PRs (nothing but `.md` in the diff) skip this via the
+    # `changes` job — Chromium download + live render is ~40s that a text
+    # change cannot break.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # Review #2: tests/test_render_live.py is the regression net for the
     # `.png.tmp` / type="png" render bug, but it is gated on RUN_PLAYWRIGHT_LIVE
     # and the default `pytest` job sets neither that nor a browser binary — so
@@ -276,6 +331,13 @@ jobs:
             mypy --config-file pyproject.toml
 
   docker-build:
+    # Doc-only pushes/PRs (nothing but `.md` in the diff) skip this via the
+    # `changes` job — the image build takes ~65s and touches nothing that a
+    # text change could break. Keep unconditional the moment anything in the
+    # build surface (Dockerfile, entrypoint.sh, pyproject.toml, uv.lock,
+    # anything .py) is in the diff.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # Nothing else in this pipeline builds the container. Every other job installs
     # dependencies its own way (uv sync into a runner venv), so the Dockerfile — the
     # thing production actually runs — was verified by nobody. That gap is not
