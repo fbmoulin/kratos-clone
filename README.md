@@ -5,8 +5,8 @@ Fork of [`asimov-academy/Website-Downloader`](https://github.com/asimov-academy/
 with substantial additions on top of the original Flask UI.
 
 > **Live:** https://website-downloader-lv5o.onrender.com (Render free tier,
-> deployed 2026-09-26; `/personalize` needs `OPENAI_API_KEY` set in the
-> dashboard — not configured yet, so those routes error until it is).
+> deployed 2026-09-26; `OPENAI_API_KEY` configured same day, so
+> `/personalize` is fully functional).
 >
 > **Status (2026-09-26):** All 9 phases shipped. **358 tests passing**, 3 skipped
 > (live OpenAI gated by `RUN_OPENAI_LIVE=1`). mypy strict on every source file
