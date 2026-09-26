@@ -146,6 +146,41 @@ gh run list --limit 5
 
 ---
 
+## Deployment status: NOT deployed anywhere
+
+**No live instance of this app exists.** Verified 2026-09-26 via the Render
+API directly (`list_services` against the connected Render account): the
+account has 4 services, none of them pointing at `fbmoulin/kratos-clone`.
+No custom domain, no CNAME, no production URL anywhere.
+
+- `render.yaml` is an **inert Blueprint definition**. Committing it to the
+  repo does nothing by itself — a human has to go to the Render dashboard
+  and manually connect the repo + click "New Blueprint Instance" for a
+  service to actually get created. That step has never happened.
+- `DEPLOY.md` and `RAILWAY_DEPLOY.md` are **how-to guides**, written in
+  imperative step-by-step form ("Acesse render.com...", "Railway vai
+  mostrar um CNAME..."). They are instructions for a future deploy, not a
+  record that one occurred. Don't read their presence as evidence of
+  anything running.
+- Every "deploy" reference elsewhere in this repo's docs is about
+  **readiness**, not occurrence: `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` (the
+  filename says pre-deploy), PR #48 `fix(deploy): unbreak Docker build`
+  (fixes something that would have broken a *future* deploy), and the
+  `docker image build + smoke` CI job (proves the image builds and boots
+  *in CI*, not that it's running anywhere persistent).
+- The Docker/CI hardening work in this thread (N-6/N-7 non-root+
+  HEALTHCHECK, `docker image build + smoke`, `render-live` CI job,
+  `/health` reporting `build_sha`) is all real and all correctly
+  documented — but it's hardening for a deploy that hasn't happened yet,
+  not evidence one has.
+
+If you're asked "what's the link to the app" or similar: there isn't one.
+Answer that directly rather than constructing a plausible-looking
+`*.onrender.com` guess — a previous session did exactly that and had to be
+corrected.
+
+---
+
 ## Personalization module (`personalize/`, Phase 4)
 
 **Status:** SHIPPED 2026-04-27. First real OpenAI integration in the repo.
