@@ -146,38 +146,61 @@ gh run list --limit 5
 
 ---
 
-## Deployment status: NOT deployed anywhere
+## Deployment status: LIVE on Render (since 2026-09-26)
 
-**No live instance of this app exists.** Verified 2026-09-26 via the Render
-API directly (`list_services` against the connected Render account): the
-account has 4 services, none of them pointing at `fbmoulin/kratos-clone`.
-No custom domain, no CNAME, no production URL anywhere.
+**Production URL: https://website-downloader-lv5o.onrender.com** — Render
+free tier, service name `website-downloader` (Render appended `-lv5o` since
+the bare name collides globally). Region `oregon`. Auto-deploys on every
+push to `main` (`autoDeploy: yes`, `trigger: commit`).
 
-- `render.yaml` is an **inert Blueprint definition**. Committing it to the
-  repo does nothing by itself — a human has to go to the Render dashboard
-  and manually connect the repo + click "New Blueprint Instance" for a
-  service to actually get created. That step has never happened.
-- `DEPLOY.md` and `RAILWAY_DEPLOY.md` are **how-to guides**, written in
-  imperative step-by-step form ("Acesse render.com...", "Railway vai
-  mostrar um CNAME..."). They are instructions for a future deploy, not a
-  record that one occurred. Don't read their presence as evidence of
-  anything running.
-- Every "deploy" reference elsewhere in this repo's docs is about
-  **readiness**, not occurrence: `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` (the
-  filename says pre-deploy), PR #48 `fix(deploy): unbreak Docker build`
-  (fixes something that would have broken a *future* deploy), and the
-  `docker image build + smoke` CI job (proves the image builds and boots
-  *in CI*, not that it's running anywhere persistent).
-- The Docker/CI hardening work in this thread (N-6/N-7 non-root+
-  HEALTHCHECK, `docker image build + smoke`, `render-live` CI job,
-  `/health` reporting `build_sha`) is all real and all correctly
-  documented — but it's hardening for a deploy that hasn't happened yet,
-  not evidence one has.
+**History, so a future session doesn't have to re-derive this:** the repo
+had *never* been deployed anywhere from inception through 2026-09-26 —
+`render.yaml` sat as an inert Blueprint, `DEPLOY.md`/`RAILWAY_DEPLOY.md`
+were unexecuted how-to guides, and every "deploy" reference in this repo's
+history (`PRE_DEPLOY_AUDIT_2026-05-10.md`, PR #48 `fix(deploy): unbreak
+Docker build`, the `docker image build + smoke` CI job) was readiness work,
+confirmed by querying the Render API directly (`list_services` on the
+connected account showed 4 unrelated services, none pointing at this repo).
+The service was then created the same session, via
+`mcp__Render__create_web_service` called directly (NOT via the
+`render.yaml` Blueprint flow — that file is currently unused by this
+service; a future Blueprint sync would need to reconcile or replace it).
 
-If you're asked "what's the link to the app" or similar: there isn't one.
-Answer that directly rather than constructing a plausible-looking
-`*.onrender.com` guess — a previous session did exactly that and had to be
-corrected.
+**Env vars set at creation:** `PORT=8080`, `KCD_MAX_CONCURRENT_RENDERS=1`,
+`TRUST_PROXY=1` (needed behind Render's reverse proxy — confirmed in boot
+logs: `proxy_fix_enabled x_for=1 x_proto=1`). **`OPENAI_API_KEY` was
+deliberately NOT set** — the base downloader works without it;
+`/personalize` and `/api/personalize/*` will error until it's added via
+the Render dashboard (Environment tab). Don't paste API keys into a chat
+session to set this — add it directly in the dashboard.
+
+**Verified live via real boot logs** (`mcp__Render__list_logs`), not a
+guess: `gunicorn` started, `Listening at: http://0.0.0.0:8080`, worker
+booted, and a real request served `GET / → 200, 42904 bytes`.
+
+**Known issue, non-fatal:** boot logs show one ERROR line —
+`Control server error: [Errno 13] Permission denied: '/home/app'`. Gunicorn
+26's control-socket feature tries to write under `$HOME`, which resolves to
+`/home/app` (the non-root `USER app` from the N-7 Dockerfile hardening) but
+the directory was never created (`useradd --no-create-home`). The server
+boots and serves requests fine regardless — this is a diagnostics feature
+failing open, not a request-path failure. Likely fix if it needs closing:
+`ENV HOME=/tmp` after the `USER app` switch in the Dockerfile. Not yet
+filed as a tracked audit item — do that before fixing it blind.
+
+**Known gap:** `healthCheckPath` is not set on the Render service (the
+`create_web_service` MCP tool doesn't expose that parameter) — same gap
+`TODO.md` already tracked for the Blueprint path. Render currently promotes
+deploys on a TCP socket check, not `/health`. Set it manually via the
+dashboard (Settings → Health Check Path → `/health`) if closing this
+matters more than it did pre-deploy — it does now, since a health-check
+failure on live traffic is a real outage, not a hypothetical.
+
+If asked "what's the link to the app": it's
+https://website-downloader-lv5o.onrender.com. If that URL 404s or looks
+wrong by the time you're reading this, re-verify with
+`mcp__Render__list_services` before answering — don't assume this
+paragraph is still current forever.
 
 ---
 
