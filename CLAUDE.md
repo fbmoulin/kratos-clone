@@ -166,13 +166,31 @@ The service was then created the same session, via
 `render.yaml` Blueprint flow — that file is currently unused by this
 service; a future Blueprint sync would need to reconcile or replace it).
 
-**Env vars set at creation:** `PORT=8080`, `KCD_MAX_CONCURRENT_RENDERS=1`,
+**Env vars set:** `PORT=8080`, `KCD_MAX_CONCURRENT_RENDERS=1`,
 `TRUST_PROXY=1` (needed behind Render's reverse proxy — confirmed in boot
-logs: `proxy_fix_enabled x_for=1 x_proto=1`). **`OPENAI_API_KEY` was
-deliberately NOT set** — the base downloader works without it;
-`/personalize` and `/api/personalize/*` will error until it's added via
-the Render dashboard (Environment tab). Don't paste API keys into a chat
-session to set this — add it directly in the dashboard.
+logs: `proxy_fix_enabled x_for=1 x_proto=1`), **`OPENAI_API_KEY`** (added
+2026-09-26 same session, via `mcp__Render__update_environment_variables`
+after Felipe explicitly chose to paste it into chat rather than use the
+dashboard — merged, not replaced, so it didn't clobber the other three).
+`/personalize` and `/api/personalize/*` are live now. Never echo the key
+value back in a session transcript or commit it anywhere in this repo.
+
+**Known quirk: an env-var-only update can wedge a deploy on the free
+tier.** Setting `OPENAI_API_KEY` triggered an automatic redeploy
+(`dep-darin9e0tbcc73bor040`) that got stuck: the new instance booted
+clean (gunicorn listening) then received an unexplained `SIGTERM` ~2s
+later, and the deploy sat in `update_in_progress` for 5+ minutes with no
+further log lines. The service stayed up throughout — Render kept serving
+the *previous* deploy (`dep-darifg8ae00c73aalug0`, still `status: "live"`)
+the whole time, so this was not an outage. Recovery: called
+`mcp__Render__trigger_deploy` (valid use per its own docs — "redeploying
+without a code change"); Render auto-canceled the wedged deploy the
+moment the new one queued, and the fresh one completed normally in ~40s.
+No root cause identified — possibly free-tier resource contention during
+the brief double-instance window (old + new both existing momentarily).
+If this recurs, the fix is the same: `trigger_deploy`, don't wait
+indefinitely on a deploy that's produced no log activity for a few
+minutes past a healthy boot line.
 
 **Verified live via real boot logs** (`mcp__Render__list_logs`), not a
 guess: `gunicorn` started, `Listening at: http://0.0.0.0:8080`, worker
