@@ -1,5 +1,10 @@
 # 🚂 Deploy no Railway
 
+> **Status (verificado 2026-09-26):** este guia nunca foi executado — não há
+> nenhum serviço Railway ou Render conectado a este repositório. É um
+> how-to, não um registro de deploy. Detalhe em `CLAUDE.md ## Deployment
+> status`.
+
 ## Vantagens do Railway:
 - ✅ 8GB RAM (vs 512MB do Render Starter)
 - ✅ $5/mês (vs $7/mês do Render)

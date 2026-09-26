@@ -1,5 +1,11 @@
 # 🚀 Deploy no Render
 
+> **Status (verificado 2026-09-26 via Render API):** este guia nunca foi
+> executado. Não existe serviço na conta Render conectado a este repositório
+> — `render.yaml` é só uma definição de Blueprint inerte até alguém seguir os
+> passos abaixo manualmente. Leia como instruções para fazer, não como
+> registro de que foi feito. Detalhe em `CLAUDE.md ## Deployment status`.
+
 ## Opção Recomendada: Render.com
 
 ### Passo a Passo Completo:

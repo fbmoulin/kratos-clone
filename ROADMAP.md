@@ -3,17 +3,20 @@
 Phased plan derived from `docs/AUDIT.md` (multi-agent audit, 2026-04-27) and
 the proposed architecture in `docs/WORKFLOW.md` + `docs/PERSONALIZATION.md`.
 
-> **Current state (2026-09-25):** All 9 phases shipped. Personalization
-> MVP live (gpt-5-mini Responses + gpt-image-1, hard budget cap, sanitize
-> hardened). All 9 P1 + all 12 P2 audit items closed. mypy strict on every
-> source file. **Phase 7 (UX audit U1–U9 + A11y P0) shipped 2026-05-11/15
-> across PRs #23, #24, #29, #30, #31.** **Phase 8 (visual rebrand to
-> "Kratos Clone" — dark + vivid orange radial + Bricolage Grotesque display)
-> shipped 2026-05-16, PR #32.** **Phase 9 (personalize preview modal) shipped
-> 2026-06-01, hardened 2026-06-05, across PRs #45, #47, #55.** Pre-deploy
-> audit MAJORs all closed or partially mitigated; Dockerfile N-6/N-7 (non-root
-> `USER` + `HEALTHCHECK`) closed 2026-09-21; `ci.yml` skips the two expensive
-> CI jobs on doc-only diffs (2026-09-25). See `TODO.md` for opportunistic
+> **Current state (2026-09-26):** All 9 phases shipped in code. Personalization
+> MVP feature-complete (gpt-5-mini Responses + gpt-image-1, hard budget cap,
+> sanitize hardened) — "feature-complete," not "live": **no phase here has
+> ever been deployed anywhere**, see `CLAUDE.md ## Deployment status` for the
+> Render-API-verified detail. All 9 P1 + all 12 P2 audit items closed. mypy
+> strict on every source file. **Phase 7 (UX audit U1–U9 + A11y P0) shipped
+> 2026-05-11/15 across PRs #23, #24, #29, #30, #31.** **Phase 8 (visual
+> rebrand to "Kratos Clone" — dark + vivid orange radial + Bricolage Grotesque
+> display) shipped 2026-05-16, PR #32.** **Phase 9 (personalize preview
+> modal) shipped 2026-06-01, hardened 2026-06-05, across PRs #45, #47, #55.**
+> Pre-deploy audit MAJORs all closed or partially mitigated; Dockerfile
+> N-6/N-7 (non-root `USER` + `HEALTHCHECK`) closed 2026-09-21; `ci.yml` skips
+> the two expensive CI jobs on doc-only diffs (2026-09-25) — all of this is
+> deploy *readiness*, not a deploy. See `TODO.md` for opportunistic
 > follow-ups, `CHANGELOG.md` for the per-release log, and
 > `docs/PRE_DEPLOY_AUDIT_2026-05-10.md` for the remaining MINOR backlog.
 > Test count: 358 passing + 3 skipped.
